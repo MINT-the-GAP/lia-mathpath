@@ -6,6 +6,11 @@ edit:     true
 comment:  LiaScript plugin for reusable math path components.
 script:   ./dist/index.js
 
+
+import: https://raw.githubusercontent.com/MINT-the-GAP/Aufgabensammlung/main/imports/FreezeREADME.md
+
+@Explain: __LIAEXPLAIN__
+
 -->
 
 # LiaScript MathPath Plugin
@@ -35,18 +40,41 @@ In einem LiaScript Kurs kann das Plugin so eingebunden werden:
 `import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/main/README.md`
 
 
-## Aktuelle Basisfunktionen
+# Makro `@Explain`
 
-- Modulstruktur analog zu bestehenden `lia-*` Repos
-- Globales API Objekt `window.__LIA_MATHPATH__`
-- Glossar-Import aus Markdown-Tabellen (automatisch via Fetch aus `Glossar.md`)
-- Hover/Click Interaktion für markierte Begriffe (`data-lia-term`)
-- Tooltip-Anzeige fuer Glossarbegriffe mit TeX-Rendering
-- Persistenter Store fuer Glossar und Versuchszaehler
+Das Makro `@Explain` erzeugt kontextbezogene Erklärungs-Hinweise für Quizfragen.
+Die Themen werden aus `@ADetails(...)` gelesen und mit den Links aus `Explain.md`
+verknüpft.
 
-## Nächste Schritte (Roadmap)
+**Zweck**
 
-1. Weitere Verfeinerung der Glossar-Erkennung in dynamischen LiaScript-Inhalten
-2. Verbesserte Mobile-Darstellung und Positionierung der Tooltips
-3. Feinschliff der Glossar-Highlight-Regeln fuer Sonderfaelle
-4. Ausbau von Tests und Validierung fuer die Tooltip-Interaktionen
+- Zeigt Erklärungs-Links passend zur aktuellen Aufgabe
+- Erscheint nur im Hint-Kontext (nicht vorab im Aufgabentext)
+- Oeffnet Erklärungen im Overlay (90% Fensterbreite und 90% Fensterhöhe)
+
+**Voraussetzungen**
+
+1. `@Explain` muss im Hint-Bereich der Aufgabe stehen.
+2. `@ADetails` muss für die Aufgabe vorhanden sein.
+3. Themen in `@ADetails` werden mit Komma getrennt.
+
+**Syntax**
+
+```markdown
+<!-- data-hint-button="1" -->
+Test: [[  Test  ]]
+[[?]] @Explain
+
+@ADetails(1=BE; Bruchrechnung, Einheiten)
+```
+
+**Verhalten zur Laufzeit**
+
+1. Vor dem ersten Prüfen ist kein nativer Hint-Button sichtbar (bei `data-hint-button="1"`).
+2. Nach dem ersten Prüfen erscheint der native Hint-Button.
+3. Nach Klick auf den Hint-Button werden die Explain-Hinweise eingeblendet.
+4. Klick auf einen Explain-Link öffnet die Zielseite im Overlay statt in einem neuen Tab.
+
+
+
+

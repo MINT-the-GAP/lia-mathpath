@@ -5,6 +5,10 @@ import 'katex/dist/katex.min.css';
 const CSS_ID = 'lia-mathpath-style-v1';
 const ACCENT_VAR = '--lia-mathpath-accent-rgb';
 const DEFAULT_ACCENT = '20, 115, 117';
+const SURFACE_VAR = '--lia-mathpath-surface-rgb';
+const TEXT_VAR = '--lia-mathpath-text-rgb';
+const DEFAULT_SURFACE = '255, 255, 255';
+const DEFAULT_TEXT = '24, 28, 34';
 
 function parseRgbTriplet(color: string): string | null {
   const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
@@ -25,7 +29,15 @@ export function syncAccentColor(): void {
   const button = document.querySelector('button');
   const color = button ? getComputedStyle(button).color : '';
   const accent = parseRgbTriplet(color) || DEFAULT_ACCENT;
+
+  const body = document.body;
+  const bodyStyle = body ? getComputedStyle(body) : null;
+  const surface = parseRgbTriplet(bodyStyle?.backgroundColor || '') || DEFAULT_SURFACE;
+  const text = parseRgbTriplet(bodyStyle?.color || '') || DEFAULT_TEXT;
+
   document.documentElement.style.setProperty(ACCENT_VAR, accent);
+  document.documentElement.style.setProperty(SURFACE_VAR, surface);
+  document.documentElement.style.setProperty(TEXT_VAR, text);
 }
 
 export function ensureCss(): void {
@@ -49,6 +61,82 @@ export function ensureCss(): void {
     '.lia-mathpath-glossary-highlight:hover {',
     '  background-color: rgba(var(--lia-mathpath-accent-rgb, 20, 115, 117), 0.3);',
     '  box-shadow: inset 0 -2px 0 rgba(var(--lia-mathpath-accent-rgb, 20, 115, 117), 0.82);',
+    '}',
+    '.lia-mathpath-explain-list {',
+    '  margin: 0.35rem 0 0.15rem 1.1rem;',
+    '  padding: 0;',
+    '}',
+    '.lia-mathpath-explain-list li {',
+    '  margin: 0.2rem 0;',
+    '}',
+    '.lia-mathpath-explain-list a {',
+    '  color: rgba(var(--lia-mathpath-accent-rgb, 20, 115, 117), 1);',
+    '  text-decoration: underline;',
+    '  text-underline-offset: 2px;',
+    '}',
+    '.lia-mathpath-explain-list a:hover {',
+    '  text-decoration-thickness: 2px;',
+    '}',
+    '.lia-mathpath-overlay-open {',
+    '  overflow: hidden;',
+    '}',
+    '.lia-mathpath-explain-overlay {',
+    '  position: fixed;',
+    '  inset: 0;',
+    '  z-index: 2147483200;',
+    '  display: none;',
+    '  align-items: center;',
+    '  justify-content: center;',
+    '  background: rgba(0, 0, 0, 0.55);',
+    '}',
+    '.lia-mathpath-explain-overlay[data-open="1"] {',
+    '  display: flex;',
+    '}',
+    '.lia-mathpath-explain-dialog {',
+    '  width: 90vw;',
+    '  height: 90vh;',
+    '  background: #fff;',
+    '  border-radius: 10px;',
+    '  overflow: hidden;',
+    '  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35), 0 0 0 3px rgba(var(--lia-mathpath-accent-rgb, 20, 115, 117), 0.95);',
+    '  border: 3px solid rgba(var(--lia-mathpath-accent-rgb, 20, 115, 117), 1);',
+    '  display: grid;',
+    '  grid-template-rows: auto 1fr;',
+    '}',
+    '.lia-mathpath-explain-header {',
+    '  display: flex;',
+    '  justify-content: flex-end;',
+    '  align-items: center;',
+    '  padding: 0.35rem 0.6rem;',
+    '  background: rgba(var(--lia-mathpath-surface-rgb, 255, 255, 255), 0.98);',
+    '  border-bottom: 1px solid rgba(var(--lia-mathpath-text-rgb, 24, 28, 34), 0.2);',
+    '  color: rgba(var(--lia-mathpath-text-rgb, 24, 28, 34), 1);',
+    '}',
+    '.lia-mathpath-explain-close {',
+    '  margin: 0;',
+    '  padding: 0.32rem 0.7rem;',
+    '  border: 1px solid rgba(var(--lia-mathpath-accent-rgb, 20, 115, 117), 1);',
+    '  border-radius: 0.4rem;',
+    '  background: rgba(var(--lia-mathpath-accent-rgb, 20, 115, 117), 1);',
+    '  color: #fff;',
+    '  font-weight: 600;',
+    '  cursor: pointer;',
+    '}',
+    '.lia-mathpath-explain-close:hover {',
+    '  filter: brightness(0.92);',
+    '}',
+    '.lia-mathpath-explain-close:focus-visible {',
+    '  outline: 2px solid rgba(var(--lia-mathpath-accent-rgb, 20, 115, 117), 0.45);',
+    '  outline-offset: 1px;',
+    '}',
+    '.lia-mathpath-explain-frame {',
+    '  width: 100%;',
+    '  height: 100%;',
+    '  border: 0;',
+    '  background: #fff;',
+    '}',
+    '.lia-mathpath-explain-hint-toggle {',
+    '  margin-left: 0.35rem;',
     '}',
     '.lia-mathpath-tooltip {',
     '  position: fixed;',
