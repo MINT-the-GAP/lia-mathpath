@@ -1,0 +1,31 @@
+{
+  "name": "lia-mathpath",
+  "version": "0.0.1",
+  "description": "LiaScript plugin for reusable math path components",
+  "scripts": {
+    "build": "parcel build src/index.ts --dist-dir dist --no-scope-hoist",
+    "preview": "npx http-server . -p 8000 --cors"
+  },
+  "keywords": [
+    "liascript",
+    "oer",
+    "typescript",
+    "math"
+  ],
+  "author": "MINT-the-GAP",
+  "license": "MIT",
+  "browserslist": [
+    "Chrome >= 88",
+    "Edge >= 88",
+    "Firefox >= 85",
+    "Safari >= 14",
+    "iOS >= 14"
+  ],
+  "devDependencies": {
+    "parcel": "^2.15.4",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "katex": "^0.17.0"
+  }
+}
