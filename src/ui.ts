@@ -2,7 +2,7 @@
 // Also provides automatic glossary term highlighting in page text.
 
 import katex from 'katex';
-import { getGlossaryEntry, STORE } from './store';
+import { getGlossaryEntry, getPluginBaseUrl, ROOT, STORE } from './store';
 
 let _tooltip: HTMLDivElement | null = null;
 let _nestedTooltip: HTMLDivElement | null = null;
@@ -21,6 +21,17 @@ const EXCLUDED_TAGS = new Set([
   'SCRIPT', 'STYLE', 'PRE', 'CODE', 'NOSCRIPT', 'TEXTAREA',
   'INPUT', 'BUTTON', 'SVG', 'CANVAS'
 ]);
+const CODE_CONTEXT_SELECTOR = [
+  'code',
+  'pre',
+  '.ace_editor',
+  '.ace_content',
+  '.ace_line',
+  '.ace_text-layer',
+  '.ace_gutter',
+  '.lia-code',
+  '.lia-code-wrapper'
+].join(', ');
 const EXPLAIN_MARKER = 'LIAEXPLAIN';
 
 function decodeTopicSeparators(value: string): string {
@@ -69,16 +80,42 @@ function parseExplainMarkdown(markdown: string): Record<string, string> {
 }
 
 function getCourseBaseUrl(): string {
-  const href = String(location.href || '');
-  const match = href.match(/[?&](https?:\/\/[^?#]+\/)[^/?#]+\.md(?:[?#][^&]*)?/i);
-  if (match?.[1]) return match[1];
+  const pluginBase = getPluginBaseUrl();
+  if (pluginBase) return pluginBase;
+
+  const hrefCandidates = [
+    String(location.href || ''),
+    String(ROOT.location?.href || '')
+  ];
+
+  for (let i = 0; i < hrefCandidates.length; i++) {
+    const href = hrefCandidates[i];
+    const match = href.match(/[?&](https?:\/\/[^?#]+\/)[^/?#]+\.md(?:[?#][^&]*)?/i);
+    if (match?.[1]) return match[1];
+  }
+
   return location.origin + location.pathname.replace(/[^/]+$/, '');
 }
 
+function joinUrl(base: string, fileName: string): string {
+  const b = String(base || '').replace(/\/+$/, '');
+  const f = String(fileName || '').replace(/^\/+/, '');
+  return `${b}/${f}`;
+}
+
 function getCourseMarkdownUrl(): string | null {
-  const href = String(location.href || '');
-  const match = href.match(/[?&](https?:\/\/[^?#]+\.md(?:\?[^#&]*)?)/i);
-  return match?.[1] || null;
+  const hrefCandidates = [
+    String(location.href || ''),
+    String(ROOT.location?.href || '')
+  ];
+
+  for (let i = 0; i < hrefCandidates.length; i++) {
+    const href = hrefCandidates[i];
+    const match = href.match(/[?&](https?:\/\/[^?#]+\.md(?:\?[^#&]*)?)/i);
+    if (match?.[1]) return match[1];
+  }
+
+  return null;
 }
 
 function extractTopicsFromADetailsCall(callValue: string): string[] {
@@ -137,7 +174,7 @@ function ensureExplainLinksLoaded(): Promise<void> {
 
   _explainLoadPromise = (async () => {
     const baseUrl = getCourseBaseUrl();
-    const candidates = [`${baseUrl}Explain.md`, `${baseUrl}/Explain.md`];
+    const candidates = [joinUrl(baseUrl, 'Explain.md')];
 
     for (let i = 0; i < candidates.length; i++) {
       try {
@@ -649,6 +686,8 @@ function showForTarget(target: Element): void {
 function bindElement(el: Element): void {
   if (!(el instanceof HTMLElement)) return;
   if (!el.hasAttribute('data-lia-term')) return;
+  if (el.closest('div.notip')) return;
+  if (el.closest(CODE_CONTEXT_SELECTOR)) return;
   if (el.dataset.liaMathpathBound === '1') return;
 
   el.dataset.liaMathpathBound = '1';
@@ -690,6 +729,8 @@ function shouldSkipElement(el: Node, allowTooltipContent = false): boolean {
   if (!(el instanceof Element)) return false;
   const tag = el.tagName;
   if (EXCLUDED_TAGS.has(tag)) return true;
+  if (el.closest('div.notip')) return true;
+  if (el.closest(CODE_CONTEXT_SELECTOR)) return true;
   if (allowTooltipContent && el.closest('.katex')) return true;
   if (!allowTooltipContent && el.closest('.lia-mathpath-tooltip')) return true;
   if (el.closest('.lia-mathpath-no-glossary')) return true;

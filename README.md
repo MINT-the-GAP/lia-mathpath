@@ -50,7 +50,7 @@ verknüpft.
 
 - Zeigt Erklärungs-Links passend zur aktuellen Aufgabe
 - Erscheint nur im Hint-Kontext (nicht vorab im Aufgabentext)
-- Oeffnet Erklärungen im Overlay (90% Fensterbreite und 90% Fensterhöhe)
+- Öffnet Erklärungen im Overlay (90% Fensterbreite und 90% Fensterhöhe)
 
 **Voraussetzungen**
 
@@ -62,11 +62,18 @@ verknüpft.
 
 ```markdown
 <!-- data-hint-button="1" -->
-Test: [[  Test  ]]
+Bruchrechnung: [[  Test  ]]
 [[?]] @Explain
 
 @ADetails(1=BE; Bruchrechnung, Einheiten)
 ```
+
+<!-- data-hint-button="1" -->
+Bruchrechnung: [[  Test  ]]
+[[?]] @Explain
+
+@ADetails(1=BE; Bruchrechnung, Einheiten)
+
 
 **Verhalten zur Laufzeit**
 
@@ -76,5 +83,29 @@ Test: [[  Test  ]]
 4. Klick auf einen Explain-Link öffnet die Zielseite im Overlay statt in einem neuen Tab.
 
 
+# Bereich ohne Tooltips (`notip`)
+
+Mit einem Container `<div class="notip"> ... </div>` kannst du einen Bereich markieren,
+in dem **keine Glossar-Highlights und keine Tooltips** angezeigt werden.
+
+Das ist nützlich für sensible Lösungsbereiche, Antwortfelder oder Texte, die bewusst
+ohne Hilfen dargestellt werden sollen.
+
+**Beispiel**
+
+```markdown
+Außerhalb des notip-Bereichs kann das Wort Bruchrechnung markiert werden.
+
+<div class="notip">
+Im notip-Bereich bleiben Begriffe wie Bruchrechnung oder Gleichung ohne Tooltip.
+</div>
+```
+
+
+Außerhalb des notip-Bereichs kann das Wort Bruchrechnung markiert werden.
+
+<div class="notip">
+Im notip-Bereich bleiben Begriffe wie Bruchrechnung oder Gleichung ohne Tooltip.
+</div>
 
 

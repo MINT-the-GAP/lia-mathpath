@@ -20,6 +20,7 @@ export const ROOT: RootWindow = getRootWindow();
 export const DOC_ID: string = document.baseURI || location.href || 'doc';
 const REGKEY = '__LIA_MATHPATH_REG_V1__';
 const STOREKEY = '__LIA_MATHPATH_STORE_V1__';
+const BASEURLKEY = '__LIA_MATHPATH_BASE_URL_V1__';
 
 ROOT[REGKEY] = ROOT[REGKEY] || { docs: {} };
 const registry = ROOT[REGKEY] as { docs: Record<string, boolean> };
@@ -32,6 +33,30 @@ ROOT[STOREKEY] = ROOT[STOREKEY] || {
 } satisfies MathPathStore;
 
 export const STORE: MathPathStore = ROOT[STOREKEY] as MathPathStore;
+
+function normalizeHttpUrl(url: string): string | null {
+  const raw = String(url || '').trim();
+  if (!raw) return null;
+
+  try {
+    const parsed = new URL(raw, location.href);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return parsed.toString();
+  } catch (_) {
+    return null;
+  }
+}
+
+export function setPluginBaseUrl(url: string): void {
+  const normalized = normalizeHttpUrl(url);
+  if (!normalized) return;
+  ROOT[BASEURLKEY] = normalized;
+}
+
+export function getPluginBaseUrl(): string | null {
+  const value = ROOT[BASEURLKEY];
+  return typeof value === 'string' ? normalizeHttpUrl(value) : null;
+}
 
 export function normalizeTermKey(term: string): string {
   return String(term || '').trim().toLowerCase();

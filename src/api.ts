@@ -2,9 +2,11 @@
 
 import {
   exportState,
+  getPluginBaseUrl,
   getGlossaryEntry,
   importState,
   parseGlossaryMarkdown,
+  ROOT,
   registerWrongAttempt,
   setGlossaryEntries
 } from './store';
@@ -88,11 +90,16 @@ export function doTriggerHighlighting(): void {
 /** @internal alias for internal use */
 const triggerHighlighting = doTriggerHighlighting;
 
+function joinUrl(base: string, fileName: string): string {
+  const b = String(base || '').replace(/\/+$/, '');
+  const f = String(fileName || '').replace(/^\/+/, '');
+  return `${b}/${f}`;
+}
+
 /** Try to fetch Glossar.md from a base URL and load the glossary from it. */
 function tryFetchGlossary(baseUrl: string): Promise<number> {
   const urls = [
-    `${baseUrl}/Glossar.md`,
-    `${baseUrl}Glossar.md`
+    joinUrl(baseUrl, 'Glossar.md')
   ];
   const tryNext = (idx: number): Promise<number> => {
     if (idx >= urls.length) return Promise.resolve(0);
@@ -118,10 +125,21 @@ function tryFetchGlossary(baseUrl: string): Promise<number> {
 
 /** Detect server base URL from current page location. */
 function getBaseUrl(): string {
-  const loc = location.href;
-  // If it's a LiaScript query param URL like ?http://localhost:8000/README.md
-  const match = loc.match(/[?&](https?:\/\/.+\/)[^/?&]*\.md/);
-  if (match) return match[1];
+  const pluginBase = getPluginBaseUrl();
+  if (pluginBase) return pluginBase;
+
+  const hrefCandidates = [
+    String(location.href || ''),
+    String(ROOT.location?.href || '')
+  ];
+
+  for (let i = 0; i < hrefCandidates.length; i++) {
+    const loc = hrefCandidates[i];
+    // LiaScript URLs usually include the course as query parameter.
+    const match = loc.match(/[?&](https?:\/\/.+\/)[^/?&]*\.md/);
+    if (match) return match[1];
+  }
+
   // If direct
   return location.origin + location.pathname.replace(/[^/]+$/, '');
 }
