@@ -9,7 +9,6 @@ let _nestedTooltip: HTMLDivElement | null = null;
 let _pinnedTarget: Element | null = null;
 let _tooltipPinned = false;
 let _observer: MutationObserver | null = null;
-let _highlightObserver: MutationObserver | null = null;
 let _explainLinks: Record<string, string> = {};
 let _explainLoadPromise: Promise<void> | null = null;
 let _adetailsTopicsByTaskIndex: Record<number, string[]> = {};
@@ -904,15 +903,3 @@ export function observeDynamicContent(): void {
 
 }
 
-export function onGlossaryUpdated(): void {
-  if (_highlightObserver) return;
-  _highlightObserver = new MutationObserver(function () {
-    highlightGlossaryTermsInScope(document.body);
-  });
-
-  _highlightObserver.observe(document.body, {
-    childList: true,
-    subtree: true,
-    characterData: true
-  });
-}

@@ -87,9 +87,6 @@ export function doTriggerHighlighting(): void {
   }
 }
 
-/** @internal alias for internal use */
-const triggerHighlighting = doTriggerHighlighting;
-
 /** Try to fetch Glossar.md from a base URL and load the glossary from it. */
 function tryFetchGlossary(baseUrl: string): Promise<number> {
   const urls = [
@@ -106,7 +103,7 @@ function tryFetchGlossary(baseUrl: string): Promise<number> {
         const parsed = parseGlossaryMarkdown(md);
         if (parsed.length > 0) {
           const count = setGlossaryEntries(parsed);
-          triggerHighlighting();
+          doTriggerHighlighting();
           console.log(`[MathPath] Loaded ${count} glossary terms from ${urls[idx]}`);
           return count;
         }
@@ -139,14 +136,14 @@ export function registerGlobalApi(): void {
   window.__LIA_MATHPATH__ = {
     setGlossary(entries: GlossaryEntry[]): number {
       const count = setGlossaryEntries(entries || []);
-      triggerHighlighting();
+      doTriggerHighlighting();
       return count;
     },
 
     loadGlossaryMarkdown(markdown: string): number {
       const parsed = parseGlossaryMarkdown(markdown);
       const count = setGlossaryEntries(parsed);
-      triggerHighlighting();
+      doTriggerHighlighting();
       return count;
     },
 
@@ -185,6 +182,6 @@ export function registerGlobalApi(): void {
 export function attemptGlossaryDiscovery(): void {
   const count = autoDiscoverGlossary();
   if (count > 0) {
-    triggerHighlighting();
+    doTriggerHighlighting();
   }
 }
