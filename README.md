@@ -31,13 +31,13 @@ Parcel Build nach `dist/index.js`, importierbare LiaScript README).
 
 
 __Try it on LiaScript:__
-https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/main/README.md
+https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md
 
 
 
 In einem LiaScript Kurs kann das Plugin so eingebunden werden:
 
-`import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/main/README.md`
+`import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md`
 
 
 # Makro `@Explain`
