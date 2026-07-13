@@ -79,8 +79,9 @@ function parseExplainMarkdown(markdown: string): Record<string, string> {
   return map;
 }
 
-function extractTopicsFromADetailsCall(callValue: string): string[] {
-  const content = decodeTopicSeparators(callValue).trim();
+/** Parses the "points-marker; topic1, topic2" format shared by @ADetails(...) call args and their rendered data-adetails* attributes. */
+function extractTopicsAfterFirstSemicolon(value: string): string[] {
+  const content = decodeTopicSeparators(value).trim();
   if (!content) return [];
 
   const sepIndex = content.indexOf(';');
@@ -101,7 +102,7 @@ function parseADetailsTopicsByIndex(markdown: string): Record<number, string[]> 
 
   while ((match = regex.exec(markdown)) !== null) {
     index++;
-    const topics = extractTopicsFromADetailsCall(match[1] || '');
+    const topics = extractTopicsAfterFirstSemicolon(match[1] || '');
     if (topics.length > 0) {
       map[index] = topics;
     }
@@ -154,20 +155,6 @@ function ensureExplainLinksLoaded(): Promise<void> {
   })();
 
   return _explainLoadPromise;
-}
-
-function extractTopicsFromADetails(attrValue: string): string[] {
-  const raw = decodeTopicSeparators(attrValue).trim();
-  if (!raw) return [];
-
-  const parts = raw.split(';').map(v => v.trim()).filter(Boolean);
-  if (parts.length < 2) return [];
-
-  const topicPart = parts.slice(1).join(';');
-  return topicPart
-    .split(/[;,]+/g)
-    .map(v => v.trim())
-    .filter(v => Boolean(v) && !/=\s*BE/i.test(v) && !/^\d+(?:\.\d+)?$/.test(v));
 }
 
 function resolveTopicLink(topic: string): string | null {
@@ -226,7 +213,7 @@ function extractTopicsFromDetailElement(details: Element): string[] {
     details.getAttribute('data-adetails') ||
     details.getAttribute('data-adetails-raw') ||
     '';
-  const parsed = extractTopicsFromADetails(adetails);
+  const parsed = extractTopicsAfterFirstSemicolon(adetails);
 
   let fallbackTopics: string[] = [];
 
