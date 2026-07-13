@@ -5,7 +5,7 @@ import type { GlossaryEntry, MathPathStore, TaskAttempt } from './types';
 type RootWindow = Window & { [key: string]: unknown };
 
 function getRootWindow(): RootWindow {
-  let w = window as RootWindow;
+  let w = window as unknown as RootWindow;
   try {
     while (w.parent && w.parent !== (w as unknown as Window)) {
       w = w.parent as RootWindow;
@@ -56,6 +56,47 @@ export function setPluginBaseUrl(url: string): void {
 export function getPluginBaseUrl(): string | null {
   const value = ROOT[BASEURLKEY];
   return typeof value === 'string' ? normalizeHttpUrl(value) : null;
+}
+
+export function joinUrl(base: string, fileName: string): string {
+  const b = String(base || '').replace(/\/+$/, '');
+  const f = String(fileName || '').replace(/^\/+/, '');
+  return `${b}/${f}`;
+}
+
+/** Detect the course base URL: plugin's own script src first, then the LiaScript course URL query param. */
+export function getCourseBaseUrl(): string {
+  const pluginBase = getPluginBaseUrl();
+  if (pluginBase) return pluginBase;
+
+  const hrefCandidates = [
+    String(location.href || ''),
+    String(ROOT.location?.href || '')
+  ];
+
+  for (let i = 0; i < hrefCandidates.length; i++) {
+    const href = hrefCandidates[i];
+    const match = href.match(/[?&](https?:\/\/[^?#]+\/)[^/?#]+\.md(?:[?#][^&]*)?/i);
+    if (match?.[1]) return match[1];
+  }
+
+  return location.origin + location.pathname.replace(/[^/]+$/, '');
+}
+
+/** Extract the LiaScript course Markdown URL from the current location's query param, if present. */
+export function getCourseMarkdownUrl(): string | null {
+  const hrefCandidates = [
+    String(location.href || ''),
+    String(ROOT.location?.href || '')
+  ];
+
+  for (let i = 0; i < hrefCandidates.length; i++) {
+    const href = hrefCandidates[i];
+    const match = href.match(/[?&](https?:\/\/[^?#]+\.md(?:\?[^#&]*)?)/i);
+    if (match?.[1]) return match[1];
+  }
+
+  return null;
 }
 
 export function normalizeTermKey(term: string): string {

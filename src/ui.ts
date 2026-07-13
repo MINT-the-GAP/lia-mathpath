@@ -2,7 +2,7 @@
 // Also provides automatic glossary term highlighting in page text.
 
 import katex from 'katex';
-import { getGlossaryEntry, getPluginBaseUrl, ROOT, STORE } from './store';
+import { getCourseBaseUrl, getCourseMarkdownUrl, getGlossaryEntry, joinUrl, STORE } from './store';
 
 let _tooltip: HTMLDivElement | null = null;
 let _nestedTooltip: HTMLDivElement | null = null;
@@ -77,45 +77,6 @@ function parseExplainMarkdown(markdown: string): Record<string, string> {
   }
 
   return map;
-}
-
-function getCourseBaseUrl(): string {
-  const pluginBase = getPluginBaseUrl();
-  if (pluginBase) return pluginBase;
-
-  const hrefCandidates = [
-    String(location.href || ''),
-    String(ROOT.location?.href || '')
-  ];
-
-  for (let i = 0; i < hrefCandidates.length; i++) {
-    const href = hrefCandidates[i];
-    const match = href.match(/[?&](https?:\/\/[^?#]+\/)[^/?#]+\.md(?:[?#][^&]*)?/i);
-    if (match?.[1]) return match[1];
-  }
-
-  return location.origin + location.pathname.replace(/[^/]+$/, '');
-}
-
-function joinUrl(base: string, fileName: string): string {
-  const b = String(base || '').replace(/\/+$/, '');
-  const f = String(fileName || '').replace(/^\/+/, '');
-  return `${b}/${f}`;
-}
-
-function getCourseMarkdownUrl(): string | null {
-  const hrefCandidates = [
-    String(location.href || ''),
-    String(ROOT.location?.href || '')
-  ];
-
-  for (let i = 0; i < hrefCandidates.length; i++) {
-    const href = hrefCandidates[i];
-    const match = href.match(/[?&](https?:\/\/[^?#]+\.md(?:\?[^#&]*)?)/i);
-    if (match?.[1]) return match[1];
-  }
-
-  return null;
 }
 
 function extractTopicsFromADetailsCall(callValue: string): string[] {
