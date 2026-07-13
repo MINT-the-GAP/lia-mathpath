@@ -171,41 +171,20 @@ export function registerGlobalApi(): void {
     }
   };
 
-  // Auto-discover glossary tables periodically
-  const attemptDiscovery = (): void => {
-    const count = autoDiscoverGlossary();
-    if (count > 0) {
-      triggerHighlighting();
-    }
-  };
-
   // Initial discovery
-  attemptDiscovery();
-  
+  attemptGlossaryDiscovery();
+
   // Try to load Glossar.md via fetch
   const baseUrl = getCourseBaseUrl();
   if (baseUrl) {
     tryFetchGlossary(baseUrl);
   }
+}
 
-  // Watch for table additions and re-discover periodically
-  const observer = new MutationObserver(() => {
-    attemptDiscovery();
-  });
-
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    characterData: false
-  });
-
-  // Also re-discover every 2000ms as fallback (limited to 5 tries)
-  let discoveryTries = 0;
-  const retryTimer = setInterval(() => {
-    if (discoveryTries++ >= 5) {
-      clearInterval(retryTimer);
-      return;
-    }
-    attemptDiscovery();
-  }, 2000);
+/** Re-scan the page for glossary tables and highlight if any new terms were found. */
+export function attemptGlossaryDiscovery(): void {
+  const count = autoDiscoverGlossary();
+  if (count > 0) {
+    triggerHighlighting();
+  }
 }

@@ -877,6 +877,12 @@ export function bindGlossaryInteractions(scope: ParentNode): void {
   });
 }
 
+let _discoverGlossary: (() => void) | null = null;
+
+export function setDiscoveryFunction(fn: () => void): void {
+  _discoverGlossary = fn;
+}
+
 export function observeDynamicContent(): void {
   if (_observer) return;
   _observer = new MutationObserver(function (records) {
@@ -898,6 +904,7 @@ export function observeDynamicContent(): void {
     }
 
     if (changed) {
+      if (_discoverGlossary) _discoverGlossary();
       processExplainHintMarkers(document);
       processExplainHintButtonFallback(document);
     }

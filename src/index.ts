@@ -2,8 +2,8 @@
 
 import { IS_DUPLICATE, setPluginBaseUrl } from './store';
 import { ensureCss, syncAccentColor } from './styles';
-import { bindGlossaryInteractions, observeDynamicContent, highlightGlossaryTerms } from './ui';
-import { registerGlobalApi, setHighlightFunction, autoDiscoverGlossary, doTriggerHighlighting } from './api';
+import { bindGlossaryInteractions, observeDynamicContent, setDiscoveryFunction, highlightGlossaryTerms } from './ui';
+import { registerGlobalApi, setHighlightFunction, attemptGlossaryDiscovery } from './api';
 
 function resolveBaseFromScriptSrc(src: string): string | null {
   const normalized = String(src || '').trim();
@@ -52,6 +52,7 @@ if (!IS_DUPLICATE) {
   ensureCss();
   syncAccentColor();
   setHighlightFunction(highlightGlossaryTerms);
+  setDiscoveryFunction(attemptGlossaryDiscovery);
   bindGlossaryInteractions(document);
   observeDynamicContent();
   registerGlobalApi();
@@ -62,17 +63,8 @@ if (!IS_DUPLICATE) {
 
   accentObserver.observe(document.documentElement, {
     attributes: true,
-    childList: true,
-    subtree: true,
-    characterData: false
+    attributeFilter: ['style', 'class'],
+    childList: false,
+    subtree: true
   });
-  
-  // Auto-discover glossary from tables in DOM
-  setTimeout(() => {
-    const entries = autoDiscoverGlossary();
-    if (entries > 0) {
-      console.log(`[MathPath] Auto-discovered ${entries} glossary terms`);
-      doTriggerHighlighting();
-    }
-  }, 500);
 }
