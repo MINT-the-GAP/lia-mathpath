@@ -21,6 +21,7 @@ export const DOC_ID: string = document.baseURI || location.href || 'doc';
 const REGKEY = '__LIA_MATHPATH_REG_V1__';
 const STOREKEY = '__LIA_MATHPATH_STORE_V1__';
 const BASEURLKEY = '__LIA_MATHPATH_BASE_URL_V1__';
+const DEFAULT_PLUGIN_BASE_URL = 'https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/';
 
 ROOT[REGKEY] = ROOT[REGKEY] || { docs: {} };
 const registry = ROOT[REGKEY] as { docs: Record<string, boolean> };
@@ -64,23 +65,15 @@ export function joinUrl(base: string, fileName: string): string {
   return `${b}/${f}`;
 }
 
-/** Detect the course base URL: plugin's own script src first, then the LiaScript course URL query param. */
+/**
+ * Base URL for MathPath-owned resources such as Explain.md and Glossar.md.
+ * LiaScript's local bundle no longer identifies the imported plugin folder,
+ * so fall back to the canonical plugin repository.
+ */
 export function getCourseBaseUrl(): string {
   const pluginBase = getPluginBaseUrl();
   if (pluginBase) return pluginBase;
-
-  const hrefCandidates = [
-    String(location.href || ''),
-    String(ROOT.location?.href || '')
-  ];
-
-  for (let i = 0; i < hrefCandidates.length; i++) {
-    const href = hrefCandidates[i];
-    const match = href.match(/[?&](https?:\/\/[^?#]+\/)[^/?#]+\.md(?:[?#][^&]*)?/i);
-    if (match?.[1]) return match[1];
-  }
-
-  return location.origin + location.pathname.replace(/[^/]+$/, '');
+  return DEFAULT_PLUGIN_BASE_URL;
 }
 
 /** Extract the LiaScript course Markdown URL from the current location's query param, if present. */

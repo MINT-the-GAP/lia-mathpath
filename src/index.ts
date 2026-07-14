@@ -29,7 +29,12 @@ function resolveBaseFromScriptSrc(src: string): string | null {
 
 function detectPluginBaseUrl(): string | null {
   const current = document.currentScript as HTMLScriptElement | null;
-  const fromCurrent = current?.src ? resolveBaseFromScriptSrc(current.src) : null;
+  // Do not mistake LiaScript's generated /liascript/index.<hash>.js bundle for
+  // the directory that owns MathPath's Markdown resources.
+  const currentSrc = current?.src || '';
+  const fromCurrent = /\/dist\/index(?:\.[a-z0-9]+)?\.js(?:[?#].*)?$/i.test(currentSrc)
+    ? resolveBaseFromScriptSrc(currentSrc)
+    : null;
   if (fromCurrent) return fromCurrent;
 
   const scripts = Array.from(document.querySelectorAll('script[src]')) as HTMLScriptElement[];
