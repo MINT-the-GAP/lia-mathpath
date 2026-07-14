@@ -22,7 +22,7 @@ Dieses Repository bildet die technische Basis für den schrittweisen Aufbau von 
 
 
 ``` markdown
-import: https://github.com/MINT-the-GAP/lia-mathpath/README.md
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md
 ```
 
 
