@@ -95,11 +95,26 @@ function extractTopicsAfterFirstSemicolon(value: string): string[] {
 
 function parseADetailsTopicsByIndex(markdown: string): Record<number, string[]> {
   const map: Record<number, string[]> = {};
+  let fenceMarker = '';
+  const searchableMarkdown = String(markdown || '')
+    .split(/\r?\n/g)
+    .map(line => {
+      const fence = line.match(/^\s*(`{3,}|~{3,})/);
+      if (fence) {
+        const marker = fence[1][0];
+        if (!fenceMarker) fenceMarker = marker;
+        else if (fenceMarker === marker) fenceMarker = '';
+        return '';
+      }
+      if (fenceMarker) return '';
+      return line.replace(/`[^`]*`/g, '');
+    })
+    .join('\n');
   const regex = /@ADetails\(([^)]*)\)/g;
   let match: RegExpExecArray | null;
   let index = 0;
 
-  while ((match = regex.exec(markdown)) !== null) {
+  while ((match = regex.exec(searchableMarkdown)) !== null) {
     index++;
     const topics = extractTopicsAfterFirstSemicolon(match[1] || '');
     if (topics.length > 0) {
@@ -194,13 +209,13 @@ function findRelatedADetails(element: Element): Element | null {
 }
 
 function extractTopicsFromDetailElement(details: Element): string[] {
+  const elementTopics: string[] = [];
   const jsonTags = details.getAttribute('data-adetail-tags');
   if (jsonTags) {
     try {
       const parsed = JSON.parse(jsonTags);
       if (Array.isArray(parsed)) {
-        const topics = parsed.map(v => String(v).trim()).filter(Boolean);
-        if (topics.length > 0) return topics;
+        elementTopics.push(...parsed.map(v => String(v).trim()).filter(Boolean));
       }
     } catch (_) {
       // Fall back to parsing adetails raw text.
@@ -212,13 +227,21 @@ function extractTopicsFromDetailElement(details: Element): string[] {
     details.getAttribute('data-adetails') ||
     details.getAttribute('data-adetails-raw') ||
     '';
-  const parsed = extractTopicsAfterFirstSemicolon(adetails);
+  elementTopics.push(...extractTopicsAfterFirstSemicolon(adetails));
 
   let fallbackTopics: string[] = [];
 
   const taskIndex = Number(details.getAttribute('data-adetails-task-index') || details.getAttribute('data-adetails-seq') || '');
   if (Number.isFinite(taskIndex) && taskIndex > 0 && _adetailsTopicsByTaskIndex[taskIndex]) {
     fallbackTopics = _adetailsTopicsByTaskIndex[taskIndex];
+  }
+
+  if (fallbackTopics.length === 0) {
+    const allDetails = Array.from(document.querySelectorAll('[data-adetails], [data-adetails-all], [data-adetails-raw], [data-adetail-tags]'));
+    const detailsIndex = allDetails.indexOf(details) + 1;
+    if (detailsIndex > 0 && _adetailsTopicsByTaskIndex[detailsIndex]) {
+      fallbackTopics = _adetailsTopicsByTaskIndex[detailsIndex];
+    }
   }
 
   const quiz = details.closest('.lia-quiz');
@@ -230,21 +253,23 @@ function extractTopicsFromDetailElement(details: Element): string[] {
     }
   }
 
-  if (fallbackTopics.length === 0) {
-    const allDetails = Array.from(document.querySelectorAll('[data-adetails], [data-adetails-all], [data-adetails-raw], [data-adetail-tags]'));
-    const detailsIndex = allDetails.indexOf(details) + 1;
-    if (detailsIndex > 0 && _adetailsTopicsByTaskIndex[detailsIndex]) {
-      fallbackTopics = _adetailsTopicsByTaskIndex[detailsIndex];
-    }
-  }
+  // Rendered ADetails attributes and the original Markdown can each be partial.
+  const seen = new Set<string>();
+  const domTopics = elementTopics.filter(topic => {
+    const key = normalizeTopicKey(topic);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
-  if (fallbackTopics.length > parsed.length) {
-    return fallbackTopics;
-  }
+  if (domTopics.length === 0) return fallbackTopics;
 
-  if (parsed.length > 0) return parsed;
+  const compatibleFallback = domTopics.every((topic, index) =>
+    normalizeTopicKey(topic) === normalizeTopicKey(fallbackTopics[index] || '')
+  );
+  if (!compatibleFallback) return domTopics;
 
-  return [];
+  return [...domTopics, ...fallbackTopics.slice(domTopics.length)];
 }
 
 function buildExplainItem(topic: string, link: string): HTMLLIElement {
@@ -265,9 +290,19 @@ function buildExplainItem(topic: string, link: string): HTMLLIElement {
 
 function processExplainAnchors(scope: ParentNode = document): void {
   const anchors = scope.querySelectorAll('.lia-mathpath-explain-anchor:not([data-lia-explain-processed="1"])');
-  for (let i = 0; i < anchors.length; i++) {
-    const anchor = anchors[i] as HTMLElement;
-    anchor.setAttribute('data-lia-explain-processed', '1');
+  const anchorList = Array.from(anchors) as HTMLElement[];
+  if (
+    scope instanceof HTMLElement &&
+    scope.classList.contains('lia-mathpath-explain-anchor') &&
+    scope.getAttribute('data-lia-explain-processed') !== '1'
+  ) {
+    anchorList.unshift(scope);
+  }
+
+  for (let i = 0; i < anchorList.length; i++) {
+    const anchor = anchorList[i];
+    const quiz = anchor.closest('.lia-quiz');
+    if (quiz) quiz.setAttribute('data-lia-explain-enabled', '1');
 
     const details = findRelatedADetails(anchor);
     if (!details) continue;
@@ -289,6 +324,7 @@ function processExplainAnchors(scope: ParentNode = document): void {
 
     if (created > 0) {
       anchor.appendChild(list);
+      anchor.setAttribute('data-lia-explain-processed', '1');
     }
   }
 }
@@ -296,19 +332,18 @@ function processExplainAnchors(scope: ParentNode = document): void {
 function buildExplainListForContext(context: Element): HTMLUListElement | null {
   let topics: string[] = [];
 
-  const quiz = context.closest('.lia-quiz');
-  if (quiz) {
-    const quizzes = Array.from(document.querySelectorAll('.lia-quiz'));
-    const quizIndex = quizzes.indexOf(quiz) + 1;
-    if (quizIndex > 0 && _adetailsTopicsByTaskIndex[quizIndex]) {
-      topics = _adetailsTopicsByTaskIndex[quizIndex];
-    }
+  const details = findRelatedADetails(context);
+  if (details) {
+    topics = extractTopicsFromDetailElement(details);
   }
 
   if (topics.length === 0) {
-    const details = findRelatedADetails(context);
-    if (!details) return null;
-    topics = extractTopicsFromDetailElement(details);
+    const quiz = context.closest('.lia-quiz');
+    const quizzes = Array.from(document.querySelectorAll('.lia-quiz'));
+    const quizIndex = quiz ? quizzes.indexOf(quiz) + 1 : 0;
+    if (quizIndex > 0 && _adetailsTopicsByTaskIndex[quizIndex]) {
+      topics = _adetailsTopicsByTaskIndex[quizIndex];
+    }
   }
 
   if (topics.length === 0) return null;
@@ -347,6 +382,9 @@ function processExplainTextMarkers(scope: Node = document.body): void {
     const parent = node.parentElement;
     if (!parent) continue;
 
+    const quiz = parent.closest('.lia-quiz');
+    if (quiz) quiz.setAttribute('data-lia-explain-enabled', '1');
+
     const list = buildExplainListForContext(parent);
     if (!list) continue;
 
@@ -378,6 +416,9 @@ function processExplainHintMarkers(scope: ParentNode = document): void {
       continue;
     }
 
+    const quiz = item.closest('.lia-quiz');
+    if (quiz) quiz.setAttribute('data-lia-explain-enabled', '1');
+
     const list = buildExplainListForContext(item);
     if (!list || !item.parentElement) continue;
 
@@ -394,6 +435,7 @@ function processExplainHintButtonFallback(scope: ParentNode = document): void {
   const quizzes = scope.querySelectorAll('.lia-quiz[data-hint-button="1"]');
   for (let i = 0; i < quizzes.length; i++) {
     const quiz = quizzes[i] as HTMLElement;
+    if (quiz.getAttribute('data-lia-explain-enabled') !== '1') continue;
     const fallbackButton = quiz.querySelector('.lia-mathpath-explain-hint-toggle');
     const fallbackList = quiz.querySelector('.lia-mathpath-explain-hint-list');
 
@@ -406,7 +448,8 @@ function processExplainHintButtonFallback(scope: ParentNode = document): void {
 
     const nativeHintButton = quiz.querySelector('button.lia-quiz__hint') as HTMLButtonElement | null;
     if (!quiz.hasAttribute('data-lia-native-hints-open')) {
-      quiz.setAttribute('data-lia-native-hints-open', '0');
+      const nativeVisible = getComputedStyle(nativeList).display !== 'none';
+      quiz.setAttribute('data-lia-native-hints-open', nativeVisible ? '1' : '0');
     }
 
     if (nativeHintButton) {
@@ -804,6 +847,8 @@ export function bindGlossaryInteractions(scope: ParentNode): void {
     let retries = 0;
     const timer = setInterval(() => {
       retries++;
+      processExplainAnchors(document);
+      processExplainTextMarkers(document.body);
       processExplainHintMarkers(document);
       processExplainHintButtonFallback(document);
       if (retries >= 6) {
@@ -891,6 +936,8 @@ export function observeDynamicContent(): void {
 
     if (changed) {
       if (_discoverGlossary) _discoverGlossary();
+      processExplainAnchors(document);
+      processExplainTextMarkers(document.body);
       processExplainHintMarkers(document);
       processExplainHintButtonFallback(document);
     }

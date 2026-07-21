@@ -7,9 +7,7 @@ comment:  LiaScript plugin for reusable math path components.
 script:   ./dist/index.js
 
 
-import: https://raw.githubusercontent.com/MINT-the-GAP/Aufgabensammlung/main/imports/FreezeREADME.md
-
-@Explain: __LIAEXPLAIN__
+@Explain: LIAEXPLAIN
 
 -->
 
@@ -22,6 +20,7 @@ Dieses Repository bildet die technische Basis für den schrittweisen Aufbau von 
 
 
 ``` markdown
+import: https://raw.githubusercontent.com/MINT-the-GAP/Aufgabensammlung/main/imports/FreezeREADME.md
 import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md
 ```
 
@@ -35,9 +34,13 @@ https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-G
 
 
 
-In einem LiaScript Kurs kann das Plugin so eingebunden werden:
+In einem LiaScript-Kurs werden `FreezeREADME.md` und MathPath direkt und in dieser
+Reihenfolge eingebunden. Auf verschachtelte Template-Imports sollte man sich nicht verlassen:
 
-`import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md`
+```markdown
+import: https://raw.githubusercontent.com/MINT-the-GAP/Aufgabensammlung/main/imports/FreezeREADME.md
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md
+```
 
 
 # Makro `@Explain`
@@ -72,7 +75,7 @@ Bruchrechnung: [[  Test  ]]
 Bruchrechnung: [[  Test  ]]
 [[?]] @Explain
 
-@ADetails(1=BE; Bruchrechnung, Einheiten)
+<span class='lia-assignment-details' data-adetails='1=BE; Bruchrechnung' data-adetails-all='1=BE; Bruchrechnung, Einheiten' style='display:none !important;'></span>
 
 
 **Verhalten zur Laufzeit**
