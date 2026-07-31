@@ -7,7 +7,7 @@ comment:  LiaScript plugin for reusable math path components.
 script:   ./dist/index.js
 
 
-@Explain: LIAEXPLAIN
+@Explain: <lia-mathpath-explain></lia-mathpath-explain>
 
 -->
 
@@ -84,6 +84,8 @@ Bruchrechnung: [[  Test  ]]
 2. Nach dem ersten Prüfen erscheint der native Hint-Button.
 3. Nach Klick auf den Hint-Button werden die Explain-Hinweise eingeblendet.
 4. Klick auf einen Explain-Link öffnet die Zielseite im Overlay statt in einem neuen Tab.
+5. Die Links werden im Shadow DOM von `lia-mathpath-explain` gerendert; die native
+   Hint-Struktur bleibt vollständig unter LiaScripts Kontrolle.
 
 
 # Bereich ohne Tooltips (`notip`)

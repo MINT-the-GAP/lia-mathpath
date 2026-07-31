@@ -31,7 +31,28 @@ const CODE_CONTEXT_SELECTOR = [
   '.lia-code',
   '.lia-code-wrapper'
 ].join(', ');
-const EXPLAIN_MARKER = 'LIAEXPLAIN';
+const EXPLAIN_ELEMENT_TAG = 'lia-mathpath-explain';
+const EXPLAIN_ELEMENT_STYLE = [
+  ':host {',
+  '  display: block;',
+  '}',
+  '.lia-mathpath-explain-list {',
+  '  margin: 0;',
+  '  padding: 0;',
+  '  list-style: none;',
+  '}',
+  '.lia-mathpath-explain-list li {',
+  '  margin: 0.2rem 0;',
+  '}',
+  '.lia-mathpath-explain-list a {',
+  '  color: rgba(var(--lia-mathpath-accent-rgb, 20, 115, 117), 1);',
+  '  text-decoration: underline;',
+  '  text-underline-offset: 2px;',
+  '}',
+  '.lia-mathpath-explain-list a:hover {',
+  '  text-decoration-thickness: 2px;',
+  '}'
+].join('\n');
 
 function decodeTopicSeparators(value: string): string {
   return String(value || '')
@@ -288,47 +309,6 @@ function buildExplainItem(topic: string, link: string): HTMLLIElement {
   return item;
 }
 
-function processExplainAnchors(scope: ParentNode = document): void {
-  const anchors = scope.querySelectorAll('.lia-mathpath-explain-anchor:not([data-lia-explain-processed="1"])');
-  const anchorList = Array.from(anchors) as HTMLElement[];
-  if (
-    scope instanceof HTMLElement &&
-    scope.classList.contains('lia-mathpath-explain-anchor') &&
-    scope.getAttribute('data-lia-explain-processed') !== '1'
-  ) {
-    anchorList.unshift(scope);
-  }
-
-  for (let i = 0; i < anchorList.length; i++) {
-    const anchor = anchorList[i];
-    const quiz = anchor.closest('.lia-quiz');
-    if (quiz) quiz.setAttribute('data-lia-explain-enabled', '1');
-
-    const details = findRelatedADetails(anchor);
-    if (!details) continue;
-
-    const topics = extractTopicsFromDetailElement(details);
-    if (topics.length === 0) continue;
-
-    const list = document.createElement('ul');
-    list.className = 'lia-mathpath-explain-list lia-mathpath-no-glossary';
-
-    let created = 0;
-    for (let t = 0; t < topics.length; t++) {
-      const topic = topics[t];
-      const link = resolveTopicLink(topic);
-      if (!link) continue;
-      list.appendChild(buildExplainItem(topic, link));
-      created++;
-    }
-
-    if (created > 0) {
-      anchor.appendChild(list);
-      anchor.setAttribute('data-lia-explain-processed', '1');
-    }
-  }
-}
-
 function buildExplainListForContext(context: Element): HTMLUListElement | null {
   let topics: string[] = [];
 
@@ -363,148 +343,60 @@ function buildExplainListForContext(context: Element): HTMLUListElement | null {
   return created > 0 ? list : null;
 }
 
-function processExplainTextMarkers(scope: Node = document.body): void {
-  const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, null);
-  const nodes: Text[] = [];
-  let current: Node | null;
+class LiaMathPathExplainElement extends HTMLElement {
+  private readonly content: HTMLDivElement;
 
-  while ((current = walker.nextNode()) !== null) {
-    if (current.nodeType !== Node.TEXT_NODE) continue;
-    const text = current.textContent || '';
-    if (!text.includes(EXPLAIN_MARKER)) continue;
-    if (!current.parentElement) continue;
-    if (current.parentElement.closest('.lia-quiz__hints')) continue;
-    nodes.push(current as Text);
+  constructor() {
+    super();
+
+    const root = this.attachShadow({ mode: 'open' });
+    const style = document.createElement('style');
+    style.textContent = EXPLAIN_ELEMENT_STYLE;
+
+    this.content = document.createElement('div');
+    this.content.setAttribute('part', 'content');
+
+    root.appendChild(style);
+    root.appendChild(this.content);
+    root.addEventListener('click', ev => {
+      const link = ev.composedPath().find(node =>
+        node instanceof HTMLAnchorElement && node.hasAttribute('data-lia-explain-href')
+      ) as HTMLAnchorElement | undefined;
+      if (!link) return;
+
+      ev.preventDefault();
+      const href = link.getAttribute('data-lia-explain-href') || link.href;
+      openExplainOverlay(href);
+    });
   }
 
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
-    const parent = node.parentElement;
-    if (!parent) continue;
+  connectedCallback(): void {
+    Promise.all([ensureExplainLinksLoaded(), ensureADetailsTopicsLoaded()]).then(() => {
+      if (this.isConnected) this.render();
+    });
+  }
 
-    const quiz = parent.closest('.lia-quiz');
-    if (quiz) quiz.setAttribute('data-lia-explain-enabled', '1');
-
-    const list = buildExplainListForContext(parent);
-    if (!list) continue;
-
-    const parts = (node.textContent || '').split(EXPLAIN_MARKER);
-    const fragment = document.createDocumentFragment();
-
-    for (let p = 0; p < parts.length; p++) {
-      if (parts[p]) {
-        fragment.appendChild(document.createTextNode(parts[p]));
-      }
-      if (p < parts.length - 1) {
-        fragment.appendChild(list.cloneNode(true));
-      }
-    }
-
-    parent.insertBefore(fragment, node);
-    parent.removeChild(node);
+  render(): void {
+    const list = buildExplainListForContext(this);
+    this.content.replaceChildren();
+    if (list) this.content.appendChild(list);
   }
 }
 
-function processExplainHintMarkers(scope: ParentNode = document): void {
-  const hintItems = scope.querySelectorAll('.lia-quiz__hints li:not([data-lia-explain-processed="1"])');
-  for (let i = 0; i < hintItems.length; i++) {
-    const item = hintItems[i] as HTMLLIElement;
-
-    const normalized = (item.textContent || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
-    if (!normalized.includes(EXPLAIN_MARKER)) {
-      item.setAttribute('data-lia-explain-processed', '1');
-      continue;
-    }
-
-    const quiz = item.closest('.lia-quiz');
-    if (quiz) quiz.setAttribute('data-lia-explain-enabled', '1');
-
-    const list = buildExplainListForContext(item);
-    if (!list || !item.parentElement) continue;
-
-    const parent = item.parentElement;
-    while (list.firstChild) {
-      parent.insertBefore(list.firstChild, item);
-    }
-    parent.removeChild(item);
-    parent.classList.add('lia-mathpath-no-glossary');
+export function registerExplainElement(): void {
+  if (!customElements.get(EXPLAIN_ELEMENT_TAG)) {
+    customElements.define(EXPLAIN_ELEMENT_TAG, LiaMathPathExplainElement);
   }
 }
 
-function processExplainHintButtonFallback(scope: ParentNode = document): void {
-  const quizzes = scope.querySelectorAll('.lia-quiz[data-hint-button="1"]');
-  for (let i = 0; i < quizzes.length; i++) {
-    const quiz = quizzes[i] as HTMLElement;
-    if (quiz.getAttribute('data-lia-explain-enabled') !== '1') continue;
-    const fallbackButton = quiz.querySelector('.lia-mathpath-explain-hint-toggle');
-    const fallbackList = quiz.querySelector('.lia-mathpath-explain-hint-list');
+function processExplainElements(scope: ParentNode = document): void {
+  const elements = Array.from(scope.querySelectorAll(EXPLAIN_ELEMENT_TAG)) as LiaMathPathExplainElement[];
+  if (scope instanceof LiaMathPathExplainElement) {
+    elements.unshift(scope);
+  }
 
-    if (fallbackButton) fallbackButton.remove();
-    if (fallbackList) fallbackList.remove();
-
-    const expected = buildExplainListForContext(quiz);
-    const nativeList = quiz.querySelector('.lia-quiz__hints');
-    if (!expected || !nativeList) continue;
-
-    const nativeHintButton = quiz.querySelector('button.lia-quiz__hint') as HTMLButtonElement | null;
-    if (!quiz.hasAttribute('data-lia-native-hints-open')) {
-      const nativeVisible = getComputedStyle(nativeList).display !== 'none';
-      quiz.setAttribute('data-lia-native-hints-open', nativeVisible ? '1' : '0');
-    }
-
-    if (nativeHintButton) {
-      if (!nativeHintButton.hasAttribute('data-lia-native-hints-bound')) {
-        nativeHintButton.setAttribute('data-lia-native-hints-bound', '1');
-        nativeHintButton.addEventListener('click', () => {
-          const isOpen = quiz.getAttribute('data-lia-native-hints-open') === '1';
-          const nextOpen = !isOpen;
-          quiz.setAttribute('data-lia-native-hints-open', nextOpen ? '1' : '0');
-          (nativeList as HTMLElement).style.display = nextOpen ? '' : 'none';
-        });
-      }
-    } else {
-      quiz.setAttribute('data-lia-native-hints-open', '0');
-    }
-
-    const open = quiz.getAttribute('data-lia-native-hints-open') === '1';
-    (nativeList as HTMLElement).style.display = open ? '' : 'none';
-
-    const seenInNative = new Set<string>();
-    const nativeItems = Array.from(nativeList.querySelectorAll('li'));
-    for (let ni = 0; ni < nativeItems.length; ni++) {
-      const li = nativeItems[ni];
-      const markerProbe = ((li.textContent || '').replace(/[^a-z0-9]/gi, '').toUpperCase());
-      if (markerProbe.includes(EXPLAIN_MARKER)) {
-        li.remove();
-        continue;
-      }
-
-      const topicKey = normalizeTopicKey(li.querySelector('a')?.textContent || li.textContent || '');
-      if (!topicKey) continue;
-      if (seenInNative.has(topicKey)) {
-        li.remove();
-        continue;
-      }
-      seenInNative.add(topicKey);
-    }
-
-    const existing = new Set(
-      Array.from(nativeList.querySelectorAll('li a'))
-        .map(a => normalizeTopicKey(a.textContent || ''))
-        .filter(Boolean)
-    );
-
-    const expectedItems = Array.from(expected.querySelectorAll('li'));
-    for (let ei = 0; ei < expectedItems.length; ei++) {
-      const a = expectedItems[ei].querySelector('a');
-      const topicKey = normalizeTopicKey(a?.textContent || '');
-      if (!topicKey || existing.has(topicKey)) continue;
-      nativeList.appendChild(expectedItems[ei].cloneNode(true));
-      existing.add(topicKey);
-    }
-
-    nativeList.classList.add('lia-mathpath-no-glossary');
-    quiz.setAttribute('data-lia-explain-fallback', 'native');
+  for (let i = 0; i < elements.length; i++) {
+    elements[i].render();
   }
 }
 
@@ -839,18 +731,12 @@ export function bindGlossaryInteractions(scope: ParentNode): void {
   bindInScope(scope);
   highlightGlossaryTermsInScope(document.body);
   Promise.all([ensureExplainLinksLoaded(), ensureADetailsTopicsLoaded()]).then(() => {
-    processExplainAnchors(document);
-    processExplainTextMarkers(document.body);
-    processExplainHintMarkers(document);
-    processExplainHintButtonFallback(document);
+    processExplainElements(document);
 
     let retries = 0;
     const timer = setInterval(() => {
       retries++;
-      processExplainAnchors(document);
-      processExplainTextMarkers(document.body);
-      processExplainHintMarkers(document);
-      processExplainHintButtonFallback(document);
+      processExplainElements(document);
       if (retries >= 6) {
         clearInterval(timer);
       }
@@ -860,14 +746,6 @@ export function bindGlossaryInteractions(scope: ParentNode): void {
   document.addEventListener('click', function (ev) {
     const target = ev.target as Element | null;
     if (!target) return;
-
-    const explainLink = target.closest('.lia-mathpath-explain-link') as HTMLAnchorElement | null;
-    if (explainLink) {
-      ev.preventDefault();
-      const href = explainLink.getAttribute('data-lia-explain-href') || explainLink.getAttribute('href') || '';
-      openExplainOverlay(href);
-      return;
-    }
 
     const clickedGlossaryTerm = target.closest('.lia-mathpath-glossary-highlight') as Element | null;
     if (clickedGlossaryTerm) {
@@ -927,19 +805,13 @@ export function observeDynamicContent(): void {
         bindElement(node);
         bindInScope(node);
         highlightGlossaryTermsInScope(node);
-        processExplainAnchors(node);
-        processExplainTextMarkers(node);
-        processExplainHintMarkers(node);
-        processExplainHintButtonFallback(node);
+        processExplainElements(node);
       }
     }
 
     if (changed) {
       if (_discoverGlossary) _discoverGlossary();
-      processExplainAnchors(document);
-      processExplainTextMarkers(document.body);
-      processExplainHintMarkers(document);
-      processExplainHintButtonFallback(document);
+      processExplainElements(document);
     }
   });
 

@@ -2,7 +2,13 @@
 
 import { IS_DUPLICATE, setPluginBaseUrl } from './store';
 import { ensureCss, syncAccentColor } from './styles';
-import { bindGlossaryInteractions, observeDynamicContent, setDiscoveryFunction, highlightGlossaryTerms } from './ui';
+import {
+  bindGlossaryInteractions,
+  highlightGlossaryTerms,
+  observeDynamicContent,
+  registerExplainElement,
+  setDiscoveryFunction
+} from './ui';
 import { registerGlobalApi, setHighlightFunction, attemptGlossaryDiscovery } from './api';
 
 function resolveBaseFromScriptSrc(src: string): string | null {
@@ -56,6 +62,7 @@ if (!IS_DUPLICATE) {
 
   ensureCss();
   syncAccentColor();
+  registerExplainElement();
   setHighlightFunction(highlightGlossaryTerms);
   setDiscoveryFunction(attemptGlossaryDiscovery);
   bindGlossaryInteractions(document);
