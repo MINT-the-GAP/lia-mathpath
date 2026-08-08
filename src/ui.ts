@@ -32,6 +32,7 @@ const CODE_CONTEXT_SELECTOR = [
   '.lia-code-wrapper'
 ].join(', ');
 const EXPLAIN_ELEMENT_TAG = 'lia-mathpath-explain';
+const EXPLAIN_EMPTY_MESSAGE = 'Leider gibt es noch keinen automatisch verlinkten Erklärungskurs.';
 const EXPLAIN_ELEMENT_STYLE = [
   ':host {',
   '  display: block;',
@@ -340,11 +341,18 @@ function buildExplainListForContext(context: Element): HTMLUListElement | null {
     created++;
   }
 
-  return created > 0 ? list : null;
+  if (created === 0) {
+    const item = document.createElement('li');
+    item.textContent = EXPLAIN_EMPTY_MESSAGE;
+    list.appendChild(item);
+  }
+
+  return list;
 }
 
 class LiaMathPathExplainElement extends HTMLElement {
   private readonly content: HTMLDivElement;
+  private isReady = false;
 
   constructor() {
     super();
@@ -372,11 +380,14 @@ class LiaMathPathExplainElement extends HTMLElement {
 
   connectedCallback(): void {
     Promise.all([ensureExplainLinksLoaded(), ensureADetailsTopicsLoaded()]).then(() => {
+      this.isReady = true;
       if (this.isConnected) this.render();
     });
   }
 
   render(): void {
+    if (!this.isReady) return;
+
     const list = buildExplainListForContext(this);
     this.content.replaceChildren();
     if (list) this.content.appendChild(list);

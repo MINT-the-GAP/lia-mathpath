@@ -84,7 +84,9 @@ Bruchrechnung: [[  Test  ]]
 2. Nach dem ersten Prüfen erscheint der native Hint-Button.
 3. Nach Klick auf den Hint-Button werden die Explain-Hinweise eingeblendet.
 4. Klick auf einen Explain-Link öffnet die Zielseite im Overlay statt in einem neuen Tab.
-5. Die Links werden im Shadow DOM von `lia-mathpath-explain` gerendert; die native
+5. Ist für keines der ermittelten Themen ein Erklärungskurs verlinkt, erscheint stattdessen
+   der Hinweis „Leider gibt es noch keinen automatisch verlinkten Erklärungskurs.“
+6. Die Links und der Hinweis werden im Shadow DOM von `lia-mathpath-explain` gerendert; die native
    Hint-Struktur bleibt vollständig unter LiaScripts Kontrolle.
 
 
