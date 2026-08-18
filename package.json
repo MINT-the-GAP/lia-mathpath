@@ -1,10 +1,11 @@
 {
   "name": "lia-mathpath",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "LiaScript plugin for reusable math path components",
   "scripts": {
     "build": "parcel build src/index.ts --dist-dir dist --no-scope-hoist",
-    "preview": "npx http-server . -p 8000 --cors"
+    "preview": "npx http-server . -p 8000 --cors",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test test/dom-ownership.test.mjs"
   },
   "keywords": [
     "liascript",

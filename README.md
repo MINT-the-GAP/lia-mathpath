@@ -1,10 +1,10 @@
 <!--
 author:   MINT-the-GAP, Martin Lommatzsch
-version:  0.0.1
+version:  0.0.2
 language: de
 edit:     true
 comment:  LiaScript plugin for reusable math path components.
-script:   ./dist/index.js
+script:   ./dist/index.js?v=0.0.2
 
 
 @Explain: <lia-mathpath-explain></lia-mathpath-explain>

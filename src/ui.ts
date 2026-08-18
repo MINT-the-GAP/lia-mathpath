@@ -2,6 +2,7 @@
 // Also provides automatic glossary term highlighting in page text.
 
 import katex from 'katex';
+import { isElmManagedNode } from './dom-ownership';
 import { getCourseBaseUrl, getCourseMarkdownUrl, getGlossaryEntry, joinUrl, STORE } from './store';
 
 let _tooltip: HTMLDivElement | null = null;
@@ -634,6 +635,7 @@ function shouldSkipElement(el: Node, allowTooltipContent = false): boolean {
 
 function shouldProcessNode(node: Node, allowTooltipContent = false): boolean {
   if (node.nodeType !== Node.TEXT_NODE) return false;
+  if (!allowTooltipContent && isElmManagedNode(node)) return false;
   const text = node.textContent || '';
   if (text.trim().length < 1) return false;
   if (node.parentElement && shouldSkipElement(node.parentElement, allowTooltipContent)) return false;
