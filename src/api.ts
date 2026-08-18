@@ -49,6 +49,8 @@ export function autoDiscoverGlossary(): number {
     const colTerm = headers.findIndex(h => h.includes('term') || h.includes('wort') || h.includes('begriff'));
     const colExp = headers.findIndex(h => h.includes('explanation') || h.includes('erklär') || h.includes('erklaer') || h.includes('erklärung') || h.includes('erklaerung'));
     const colTags = headers.findIndex(h => h.includes('tag'));
+    const colAliases = headers.findIndex(h => h.includes('alias') || h.includes('wortform'));
+    const colLinks = headers.findIndex(h => h.includes('link') || h.includes('hint'));
 
     for (let r = 0; r < rows.length; r++) {
       const cells = (rows[r] as HTMLTableRowElement).querySelectorAll('td');
@@ -62,7 +64,8 @@ export function autoDiscoverGlossary(): number {
         term,
         explanation,
         tags: colTags >= 0 ? (cells[colTags]?.textContent || '').split(/[,;]/).map(t => t.trim()).filter(Boolean) : [],
-        links: []
+        links: colLinks >= 0 ? (cells[colLinks]?.textContent || '').split(/[\s,;]+/).map(t => t.trim()).filter(Boolean) : [],
+        aliases: colAliases >= 0 ? (cells[colAliases]?.textContent || '').split(/[,;]/).map(t => t.trim()).filter(Boolean) : []
       });
     }
 

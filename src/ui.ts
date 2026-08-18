@@ -3,7 +3,15 @@
 
 import katex from 'katex';
 import { isElmManagedNode } from './dom-ownership';
-import { getCourseBaseUrl, getCourseMarkdownUrl, getGlossaryEntry, joinUrl, STORE } from './store';
+import {
+  getCourseBaseUrl,
+  getCourseMarkdownUrl,
+  getGlossaryEntry,
+  getGlossaryMatchForms,
+  joinUrl,
+  normalizeTermKey
+} from './store';
+import type { GlossaryMatchForm } from './store';
 
 let _tooltip: HTMLDivElement | null = null;
 let _nestedTooltip: HTMLDivElement | null = null;
@@ -16,6 +24,9 @@ let _adetailsTopicsByTaskIndex: Record<number, string[]> = {};
 let _adetailsLoadPromise: Promise<void> | null = null;
 let _explainOverlay: HTMLDivElement | null = null;
 let _explainOverlayFrame: HTMLIFrameElement | null = null;
+let _interactionsBound = false;
+let _explainRetriesScheduled = false;
+const _boundTermElements = new WeakSet<HTMLElement>();
 
 const EXCLUDED_TAGS = new Set([
   'SCRIPT', 'STYLE', 'PRE', 'CODE', 'NOSCRIPT', 'TEXTAREA',
@@ -31,6 +42,15 @@ const CODE_CONTEXT_SELECTOR = [
   '.ace_gutter',
   '.lia-code',
   '.lia-code-wrapper'
+].join(', ');
+const EXCLUDED_CONTEXT_SELECTOR = [
+  Array.from(EXCLUDED_TAGS).map(tag => tag.toLowerCase()).join(', '),
+  CODE_CONTEXT_SELECTOR,
+  'div.notip',
+  '.katex',
+  '.katex-display',
+  '.lia-mathpath-tooltip',
+  '.lia-mathpath-no-glossary'
 ].join(', ');
 const EXPLAIN_ELEMENT_TAG = 'lia-mathpath-explain';
 const EXPLAIN_EMPTY_MESSAGE = 'Leider gibt es noch keinen automatisch verlinkten Erklärungskurs.';
@@ -504,7 +524,8 @@ function ensureTooltip(isNested = false): HTMLDivElement {
 }
 
 function hideTooltip(isNested = false): void {
-  const tip = ensureTooltip(isNested);
+  const tip = isNested ? _nestedTooltip : _tooltip;
+  if (!tip || !tip.isConnected) return;
   tip.setAttribute('data-open', '0');
   tip.textContent = '';
 }
@@ -559,7 +580,12 @@ function placeTooltip(rect: DOMRect, isNested = false): void {
   tip.style.left = `${Math.round(left)}px`;
 }
 
+function isExcludedGlossaryContext(element: Element): boolean {
+  return !!element.closest(EXCLUDED_CONTEXT_SELECTOR);
+}
+
 function showForTarget(target: Element): void {
+  if (!target.isConnected || isExcludedGlossaryContext(target)) return;
   const isNested = !!target.closest('.lia-mathpath-tooltip');
   const targetRect = target.getBoundingClientRect();
   const term = target.getAttribute('data-lia-term') || target.textContent || '';
@@ -571,8 +597,6 @@ function showForTarget(target: Element): void {
   const title = `<div class="lia-mathpath-tooltip-title"><span class="lia-mathpath-glossary-highlight lia-mathpath-term" data-lia-term="${escapeHtml(entry.term)}">${escapeHtml(entry.term)}</span></div>`;
   const body = `<div class="lia-mathpath-tooltip-body">${renderTooltipMarkup(`${entry.explanation}${related}`)}</div>`;
   tip.innerHTML = `${title}${body}`;
-  highlightGlossaryTermsInTooltip(tip);
-  bindInScope(tip);
   tip.setAttribute('data-open', '1');
   placeTooltip(targetRect, isNested);
 }
@@ -580,12 +604,19 @@ function showForTarget(target: Element): void {
 function bindElement(el: Element): void {
   if (!(el instanceof HTMLElement)) return;
   if (!el.hasAttribute('data-lia-term')) return;
-  if (el.closest('div.notip')) return;
-  if (el.closest(CODE_CONTEXT_SELECTOR)) return;
-  if (el.dataset.liaMathpathBound === '1') return;
+  if (isExcludedGlossaryContext(el)) return;
 
+  const missingClasses = ['lia-mathpath-term', 'lia-mathpath-glossary-highlight']
+    .filter(className => !el.classList.contains(className));
+  if (missingClasses.length > 0) el.classList.add(...missingClasses);
+  if (_boundTermElements.has(el)) return;
+  if (el.dataset.liaMathpathBound === '1') {
+    _boundTermElements.add(el);
+    return;
+  }
+
+  _boundTermElements.add(el);
   el.dataset.liaMathpathBound = '1';
-  el.classList.add('lia-mathpath-term');
 
   el.addEventListener('mouseenter', function () {
     showForTarget(el);
@@ -612,156 +643,201 @@ function bindElement(el: Element): void {
   });
 }
 
-function bindInScope(scope: ParentNode): void {
-  const nodes = scope.querySelectorAll('[data-lia-term]');
-  for (let i = 0; i < nodes.length; i++) {
-    bindElement(nodes[i]);
+function getElementsInScope(scope: Node, selector: string): Element[] {
+  const elements: Element[] = [];
+  if (scope instanceof Element && scope.matches(selector)) {
+    elements.push(scope);
   }
+
+  const parentScope = scope as ParentNode;
+  if (typeof parentScope.querySelectorAll === 'function') {
+    elements.push(...Array.from(parentScope.querySelectorAll(selector)));
+  }
+  return elements;
 }
 
-function shouldSkipElement(el: Node, allowTooltipContent = false): boolean {
+function bindInScope(scope: Node): void {
+  const nodes = getElementsInScope(scope, '[data-lia-term]');
+  for (let i = 0; i < nodes.length; i++) bindElement(nodes[i]);
+}
+
+function shouldSkipElement(el: Node): boolean {
   if (!(el instanceof Element)) return false;
-  const tag = el.tagName;
-  if (EXCLUDED_TAGS.has(tag)) return true;
-  if (el.closest('div.notip')) return true;
-  if (el.closest(CODE_CONTEXT_SELECTOR)) return true;
-  if (allowTooltipContent && el.closest('.katex')) return true;
-  if (!allowTooltipContent && el.closest('.lia-mathpath-tooltip')) return true;
-  if (el.closest('.lia-mathpath-no-glossary')) return true;
-  if (el.classList.contains('lia-mathpath-glossary-highlight')) return true;
-  if (el.classList.contains('lia-mathpath-term')) return true;
+  if (isExcludedGlossaryContext(el)) return true;
+  if (el.closest('[data-lia-term], .lia-mathpath-glossary-highlight, .lia-mathpath-term')) return true;
   return false;
 }
 
-function shouldProcessNode(node: Node, allowTooltipContent = false): boolean {
+function shouldProcessNode(node: Node): boolean {
   if (node.nodeType !== Node.TEXT_NODE) return false;
-  if (!allowTooltipContent && isElmManagedNode(node)) return false;
+  if (isElmManagedNode(node)) return false;
   const text = node.textContent || '';
   if (text.trim().length < 1) return false;
-  if (node.parentElement && shouldSkipElement(node.parentElement, allowTooltipContent)) return false;
+  if (node.parentElement && shouldSkipElement(node.parentElement)) return false;
   return true;
 }
 
-function highlightTermInNode(node: Node, term: string, allowTooltipContent = false): boolean {
-  if (!shouldProcessNode(node, allowTooltipContent)) return false;
+interface PreparedGlossaryMatcher {
+  regex: RegExp;
+  bySurface: Map<string, GlossaryMatchForm>;
+}
+
+interface GlossaryTextMatch {
+  start: number;
+  end: number;
+  text: string;
+  term: string;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function prepareGlossaryMatcher(forms: GlossaryMatchForm[]): PreparedGlossaryMatcher | null {
+  const alternatives: string[] = [];
+  const bySurface = new Map<string, GlossaryMatchForm>();
+
+  for (let i = 0; i < forms.length; i++) {
+    const form = forms[i].form.trim();
+    const key = normalizeTermKey(form);
+    if (!form || !key || bySurface.has(key)) continue;
+    bySurface.set(key, forms[i]);
+    alternatives.push(form.split(/\s+/g).map(escapeRegex).join('\\s+'));
+  }
+
+  if (alternatives.length === 0) return null;
+  return {
+    regex: new RegExp(
+      `(^|[^\\p{L}\\p{M}\\p{N}_])(${alternatives.join('|')})(?![\\p{L}\\p{M}\\p{N}_])`,
+      'giu'
+    ),
+    bySurface
+  };
+}
+
+function activateSemanticTermsInScope(scope: Node): void {
+  const elements = getElementsInScope(scope, 'em');
+  for (let i = 0; i < elements.length; i++) {
+    const element = elements[i];
+    if (element.hasAttribute('data-lia-term') || isExcludedGlossaryContext(element)) continue;
+
+    const entry = getGlossaryEntry((element.textContent || '').trim());
+    if (!entry) continue;
+
+    element.setAttribute('data-lia-term', entry.term);
+    element.classList.add('lia-mathpath-glossary-highlight');
+    bindElement(element);
+  }
+}
+
+function highlightTermsInNode(node: Node, matcher: PreparedGlossaryMatcher): boolean {
+  if (!shouldProcessNode(node)) return false;
 
   const text = node.textContent || '';
-  const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(`\\b${escapedTerm}[a-zäöüß]*`, 'gi');
-  if (!regex.test(text)) return false;
+  const matches: GlossaryTextMatch[] = [];
+  matcher.regex.lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = matcher.regex.exec(text)) !== null) {
+    const leadingBoundary = match[1] || '';
+    const matchedText = match[2] || '';
+    const form = matcher.bySurface.get(normalizeTermKey(matchedText));
+    if (!form) continue;
+
+    const start = match.index + leadingBoundary.length;
+    matches.push({
+      start,
+      end: start + matchedText.length,
+      text: matchedText,
+      term: form.term
+    });
+  }
+
+  if (matches.length === 0 || !node.parentElement) return false;
 
   let lastIndex = 0;
   const fragments: Node[] = [];
-  let match: RegExpExecArray | null;
-  const regexGlobal = new RegExp(`\\b${escapedTerm}[a-zäöüß]*`, 'gi');
+  const highlights: HTMLElement[] = [];
 
-  while ((match = regexGlobal.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      fragments.push(document.createTextNode(text.substring(lastIndex, match.index)));
+  for (let i = 0; i < matches.length; i++) {
+    const current = matches[i];
+    if (current.start > lastIndex) {
+      fragments.push(document.createTextNode(text.substring(lastIndex, current.start)));
     }
 
     const highlightSpan = document.createElement('span');
     highlightSpan.className = 'lia-mathpath-glossary-highlight';
-    highlightSpan.setAttribute('data-lia-term', term);
-    highlightSpan.textContent = match[0];
+    highlightSpan.setAttribute('data-lia-term', current.term);
+    highlightSpan.textContent = current.text;
     fragments.push(highlightSpan);
-
-    lastIndex = regexGlobal.lastIndex;
+    highlights.push(highlightSpan);
+    lastIndex = current.end;
   }
 
   if (lastIndex < text.length) {
     fragments.push(document.createTextNode(text.substring(lastIndex)));
   }
 
-  if (fragments.length > 0 && node.parentElement) {
-    const parent = node.parentElement;
-    for (let i = 0; i < fragments.length; i++) {
-      parent.insertBefore(fragments[i], node);
-    }
-    parent.removeChild(node);
-    return true;
+  const parent = node.parentElement;
+  for (let i = 0; i < fragments.length; i++) {
+    parent.insertBefore(fragments[i], node);
   }
-
-  return false;
+  parent.removeChild(node);
+  for (let i = 0; i < highlights.length; i++) bindElement(highlights[i]);
+  return true;
 }
 
-function highlightGlossaryTermsInNode(node: Node, allowTooltipContent = false): void {
-  if (!shouldProcessNode(node, allowTooltipContent)) return;
+function highlightGlossaryTermsInScope(scope: Node = document.body): void {
+  bindInScope(scope);
+  activateSemanticTermsInScope(scope);
 
-  const terms = Object.keys(STORE.glossary);
-  for (let i = 0; i < terms.length; i++) {
-    if (highlightTermInNode(node, terms[i], allowTooltipContent)) {
-      return;
-    }
-  }
-}
+  const matcher = prepareGlossaryMatcher(getGlossaryMatchForms());
+  if (!matcher) return;
 
-function highlightGlossaryTermsInScope(scope: Node = document.body, allowTooltipContent = false): void {
-  const terms = Object.keys(STORE.glossary);
-  if (terms.length === 0) return;
-
-  const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, null);
   const queue: Node[] = [];
-  let currentNode: Node | null;
-
-  while ((currentNode = walker.nextNode()) !== null) {
-    queue.push(currentNode);
+  if (scope.nodeType === Node.TEXT_NODE) {
+    queue.push(scope);
+  } else {
+    const ownerDocument = scope.ownerDocument || document;
+    const walker = ownerDocument.createTreeWalker(scope, NodeFilter.SHOW_TEXT, null);
+    let currentNode: Node | null;
+    while ((currentNode = walker.nextNode()) !== null) queue.push(currentNode);
   }
 
-  for (let qi = 0; qi < queue.length; qi++) {
-    const node = queue[qi];
-    if (!shouldProcessNode(node, allowTooltipContent)) continue;
-
-    for (let ti = 0; ti < terms.length; ti++) {
-      if (!shouldProcessNode(node, allowTooltipContent)) break;
-
-      const parent = node.parentNode;
-      if (highlightTermInNode(node, terms[ti], allowTooltipContent)) {
-        if (parent) {
-          const siblings = parent.childNodes;
-          for (let si = 0; si < siblings.length; si++) {
-            const sib = siblings[si];
-            if (sib.nodeType === Node.TEXT_NODE && sib !== node && queue.indexOf(sib) < 0) {
-              queue.push(sib);
-            }
-          }
-        }
-        break;
-      }
-    }
-  }
+  for (let i = 0; i < queue.length; i++) highlightTermsInNode(queue[i], matcher);
+  bindInScope(scope);
 }
 
 export function highlightGlossaryTerms(scope: Node = document.body): void {
   highlightGlossaryTermsInScope(scope);
 }
 
-function highlightGlossaryTermsInTooltip(scope: Node): void {
-  highlightGlossaryTermsInScope(scope, true);
-}
-
 export function bindGlossaryInteractions(scope: ParentNode): void {
-  bindInScope(scope);
-  highlightGlossaryTermsInScope(document.body);
-  Promise.all([ensureExplainLinksLoaded(), ensureADetailsTopicsLoaded()]).then(() => {
-    processExplainElements(document);
+  highlightGlossaryTermsInScope(scope as Node);
 
-    let retries = 0;
-    const timer = setInterval(() => {
-      retries++;
+  if (!_explainRetriesScheduled) {
+    _explainRetriesScheduled = true;
+    Promise.all([ensureExplainLinksLoaded(), ensureADetailsTopicsLoaded()]).then(() => {
       processExplainElements(document);
-      if (retries >= 6) {
-        clearInterval(timer);
-      }
-    }, 1200);
-  });
+
+      let retries = 0;
+      const timer = setInterval(() => {
+        retries++;
+        processExplainElements(document);
+        if (retries >= 6) clearInterval(timer);
+      }, 1200);
+    });
+  }
+
+  if (_interactionsBound) return;
+  _interactionsBound = true;
 
   document.addEventListener('click', function (ev) {
-    const target = ev.target as Element | null;
-    if (!target) return;
+    const target = ev.target;
+    if (!(target instanceof Element)) return;
 
     const clickedGlossaryTerm = target.closest('.lia-mathpath-glossary-highlight') as Element | null;
-    if (clickedGlossaryTerm) {
+    if (clickedGlossaryTerm && !isExcludedGlossaryContext(clickedGlossaryTerm)) {
       _tooltipPinned = true;
       _pinnedTarget = clickedGlossaryTerm;
       showForTarget(clickedGlossaryTerm);
@@ -791,11 +867,23 @@ export function bindGlossaryInteractions(scope: ParentNode): void {
   });
 
   window.addEventListener('scroll', function () {
-    if (_pinnedTarget) placeTooltip(_pinnedTarget.getBoundingClientRect());
+    if (!_pinnedTarget) return;
+    if (!_pinnedTarget.isConnected) {
+      hideTooltip();
+      clearPinnedTooltip();
+      return;
+    }
+    placeTooltip(_pinnedTarget.getBoundingClientRect());
   }, true);
 
   window.addEventListener('resize', function () {
-    if (_pinnedTarget) placeTooltip(_pinnedTarget.getBoundingClientRect());
+    if (!_pinnedTarget) return;
+    if (!_pinnedTarget.isConnected) {
+      hideTooltip();
+      clearPinnedTooltip();
+      return;
+    }
+    placeTooltip(_pinnedTarget.getBoundingClientRect());
   });
 }
 
@@ -806,23 +894,25 @@ export function setDiscoveryFunction(fn: () => void): void {
 }
 
 export function observeDynamicContent(): void {
-  if (_observer) return;
+  if (_observer || !document.body) return;
   _observer = new MutationObserver(function (records) {
-    let changed = false;
+    let childContentChanged = false;
     for (let i = 0; i < records.length; i++) {
       const rec = records[i];
+      if (rec.type === 'attributes' && rec.target instanceof Element) {
+        highlightGlossaryTermsInScope(rec.target);
+        continue;
+      }
+
       for (let j = 0; j < rec.addedNodes.length; j++) {
         const node = rec.addedNodes[j];
-        if (!(node instanceof Element)) continue;
-        changed = true;
-        bindElement(node);
-        bindInScope(node);
+        childContentChanged = true;
         highlightGlossaryTermsInScope(node);
-        processExplainElements(node);
+        if (node instanceof Element) processExplainElements(node);
       }
     }
 
-    if (changed) {
+    if (childContentChanged) {
       if (_discoverGlossary) _discoverGlossary();
       processExplainElements(document);
     }
@@ -830,8 +920,9 @@ export function observeDynamicContent(): void {
 
   _observer.observe(document.body, {
     childList: true,
-    subtree: true
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class', 'data-lia-term']
   });
-
 }
 

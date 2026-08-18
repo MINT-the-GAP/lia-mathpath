@@ -1,10 +1,10 @@
 <!--
-author:   MINT-the-GAP, Martin Lommatzsch
-version:  0.0.2
+author:   MINT-the-GAP; Martin Lommatzsch
+version:  0.0.3
 language: de
 edit:     true
 comment:  LiaScript plugin for reusable math path components.
-script:   ./dist/index.js?v=0.0.2
+script:   ./dist/index.js?v=0.0.3
 
 
 @Explain: <lia-mathpath-explain></lia-mathpath-explain>
@@ -34,13 +34,47 @@ https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-G
 
 
 
-In einem LiaScript-Kurs werden `FreezeREADME.md` und MathPath direkt und in dieser
-Reihenfolge eingebunden. Auf verschachtelte Template-Imports sollte man sich nicht verlassen:
+In einem LiaScript-Kurs werden `FreezeREADME.md` und MathPath direkt im einzigen
+LiaScript-Hauptkopf und in dieser Reihenfolge eingebunden. Auf verschachtelte
+Template-Imports sollte man sich nicht verlassen:
 
 ```markdown
 import: https://raw.githubusercontent.com/MINT-the-GAP/Aufgabensammlung/main/imports/FreezeREADME.md
 import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md
 ```
+
+Erst danach steht das MathPath-Makro `@Explain` im Kurs zur Verfügung.
+
+
+# Glossarbegriffe sicher verwenden
+
+MathPath ersetzt keine von LiaScript beziehungsweise Elm verwalteten Textknoten. Im normalen
+LiaScript-Kurstext werden deshalb vorhandene semantische Elemente als Begriffsträger verwendet.
+Die automatische Textknoten-Hervorhebung bleibt für nicht von Elm verwaltete DOM-Bereiche aktiv.
+
+## Kursive Volltreffer
+
+Ein kursiv geschriebener Begriff wie `*Bruch*` wird von Markdown als bestehendes
+`<em>`-Element erzeugt. MathPath bindet den Tooltip an dieses Element, wenn dessen gesamter
+Text nach dem Trimmen genau einem Glossarbegriff oder einer Aliasform entspricht. Der enthaltene
+Textknoten wird dabei nicht ersetzt. Setze Satzzeichen außerhalb der Kursivmarkierung; ein Ausdruck
+wie `*ein Bruch*` ist kein Volltreffer.
+
+## Aliasformen in `Glossar.md`
+
+Die optionale dritte Tabellenspalte `Aliasformen` enthält mit Semikolon getrennte, ausdrücklich
+erlaubte Wortformen. Alte Glossare mit nur `Begriff` und `Erklärung` bleiben gültig.
+
+```markdown
+| Begriff | Erklärung | Aliasformen |
+|---|---|---|
+| Bruch | Ein Bruch besteht aus einem Zähler und einem Nenner. | Brüche; Brüchen |
+| Erweitern | Brüche können durch Erweitern umgeformt werden. | erweitert |
+```
+
+Begriff und Aliasformen werden ohne Beachtung der Groß- und Kleinschreibung als vollständige
+Wörter abgeglichen. Es findet kein allgemeines Stemming statt. Ein exakter Glossarbegriff hat
+Vorrang vor einer Aliasform; bei überlappenden Treffern wird die längere, genauere Form verwendet.
 
 
 # Makro `@Explain`
@@ -96,23 +130,22 @@ Mit einem Container `<div class="notip"> ... </div>` kannst du einen Bereich mar
 in dem **keine Glossar-Highlights und keine Tooltips** angezeigt werden.
 
 Das ist nützlich für sensible Lösungsbereiche, Antwortfelder oder Texte, die bewusst
-ohne Hilfen dargestellt werden sollen.
+ohne Hilfen dargestellt werden sollen. Das gilt auch für kursive Volltreffer und
+manuelle `[data-lia-term]`-Elemente.
 
-**Beispiel**
+## Sichtbares Testbeispiel
+
+Ein *Bruch* besitzt einen *Zähler* und einen *Nenner*. Mehrere *Brüche* verwenden dieselbe
+Glossarerklärung für den Begriff Bruch.
+
+<div class="notip">
+Hier bleibt <em>Bruch</em> ohne Hervorhebung und Tooltip.
+</div>
+
+**Quelltext des `notip`-Bereichs**
 
 ```markdown
-Außerhalb des notip-Bereichs kann das Wort Bruchrechnung markiert werden.
-
 <div class="notip">
-Im notip-Bereich bleiben Begriffe wie Bruchrechnung oder Gleichung ohne Tooltip.
+Hier bleibt <em>Bruch</em> ohne Hervorhebung und Tooltip.
 </div>
 ```
-
-
-Außerhalb des notip-Bereichs kann das Wort Bruchrechnung markiert werden.
-
-<div class="notip">
-Im notip-Bereich bleiben Begriffe wie Bruchrechnung oder Gleichung ohne Tooltip.
-</div>
-
-

@@ -1,6 +1,6 @@
 <!--
-author:   MINT-the-GAP, Martin Lommatzsch
-version:  0.0.1
+author:   MINT-the-GAP; Martin Lommatzsch
+version:  0.0.3
 language: de
 edit:     true
 comment:  LiaScript plugin for reusable math path components.
@@ -15,8 +15,8 @@ script:   ./dist/index.js
 
 
 
-| Begriff | Erklärung |
-|---|---|
+| Begriff | Erklärung | Aliasformen |
+|---|---|---|
 | Ableitung | Die Ableitung einer Funktion $f$ ist – sofern sie existiert – die Funktion $f'$, deren Wert $f'(x)$ die momentane Änderungsrate von $f$ an der Stelle $x$ angibt. |
 | Abstand | Der Abstand zweier Punkte ist die Länge der kürzesten Verbindung; er ist stets nichtnegativ und kann $0$ sein. |
 | Abszisse | Die Abszisse ist die $x$-Koordinate eines Punktes. Die zugehörige Achse heißt Abszissenachse oder $x$-Achse. |
@@ -48,7 +48,8 @@ script:   ./dist/index.js
 | Binomialkoeffizient | Die Binomialkoeffizienten sind eine verkürzte Schreibweise von Brüchen aus Fakultäten. |
 | Binär | Binär bedeutet zweiwertig. Das binäre beziehungsweise duale Zahlensystem verwendet die Ziffern $0$ und $1$; „Ja“ und „Nein“ sind lediglich mögliche Interpretationen. |
 | Bogenmaß | Das Bogenmaß hat die Einheit Radiant und kann aus der Einheit Grad bestimmt werden. |
-| Bruch | Ein Bruch besteht aus einem Zähler und einem Nenner und kann in eine Dezimalzahl umgewandelt werden. |
+| Bruch | Ein Bruch besteht aus einem Zähler und einem Nenner und kann in eine Dezimalzahl umgewandelt werden. | Brüche; Brüchen |
+| Bruchstrich | Der Bruchstrich trennt in der Bruchschreibweise den Zähler vom Nenner und steht für die Division des Zählers durch den Nenner. |
 | Darstellung (Zahl) | Eine Zahl kann verschieden dargestellt werden, so ist zum Beispiel: $0,5 = \frac{1}{2} = \frac{4}{8}$ (Bruch). |
 | Definition | Eine Definition legt die Bedeutung eines mathematischen Begriffs eindeutig fest; sie stellt nicht allgemein die Regeln der Mathematik auf. |
 | Definitionslücke | Eine Definitionslücke ist eine Stelle außerhalb der Definitionsmenge. Bei rationalen Funktionen unterscheidet man insbesondere hebbare Lücken und Polstellen. |
@@ -72,7 +73,7 @@ script:   ./dist/index.js
 | Dimension | Die Anzahl von Dimensionen gibt die Ausbreitung von Objekten an und ist ein zentraler Begriff der Geometrie. |
 | Diskret | Eine diskrete Menge besitzt isolierte Werte; nicht jede diskrete Struktur lässt sich sinnvoll durch einen Abstand zu einem direkt benachbarten Wert charakterisieren. |
 | Distributivgesetz | Das Distributivgesetz beschreibt eine Rechenvorschrift für die Multiplikation bei der mindestens ein Faktor mittels Klammern auf Summanden besteht. |
-| Division | Bei der Division wird eine Zahl oder ein Term (Dividend) durch eine andere Zahl oder einen anderen Term (Divisor) geteilt und bilden den Quotienten. |
+| Division | Bei der Division wird eine Zahl oder ein Term (Dividend) durch eine andere Zahl oder einen anderen Term (Divisor) geteilt und bilden den Quotienten. | dividiert |
 | Divisor | Der Divisor ist eine Zahl oder ein Term durch den geteilt wird. Bei Brüchen wird der Divisor auch Nenner genannt. |
 | Dividend | Der Dividend ist eine Zahl oder ein Term der geteilt durch den Divisor wird. Bei Brüchen wird der Divisor auch Nenner genannt. |
 | Drachen | Ein Drachenviereck besitzt zwei Paare gleich langer benachbarter Seiten. Es ist kein spezielles Rechteck. |
@@ -99,7 +100,7 @@ script:   ./dist/index.js
 | Euler'sche Gerade | Die Euler-Gerade eines nicht gleichseitigen Dreiecks enthält Umkreismittelpunkt, Schwerpunkt und Höhenschnittpunkt; der Schwerpunkt teilt die Strecke zwischen Umkreismittelpunkt und Höhenschnittpunkt im Verhältnis $1:2$. |
 | Ereignis | Ein Ereignis ist eine Teilmenge des Ergebnisraums; ein einzelnes mögliches Resultat heißt Ergebnis oder Elementarereignis. |
 | Ergebnis | Die gesuchte Zahl beziehungsweise der gesuchte Ausdruck. |
-| Erweitern | Brüche können durch Erweitern in eine andere Darstellung überführt werden, sodass mit ihr die Addition oder Subtraktion leichter durchgeführt werden können. |
+| Erweitern | Brüche können durch Erweitern in eine andere Darstellung überführt werden, sodass mit ihr die Addition oder Subtraktion leichter durchgeführt werden können. | erweitert |
 | Erwartungswert | Der Erwartungswert ist der gewichtete Mittelwert der möglichen Werte einer Zufallsvariablen, nicht ihr häufigster Wert. |
 | Exponent | Der Exponent gibt bei natürlichen Exponenten die Anzahl gleicher Faktoren der Basis an, nicht die Anzahl der Multiplikationsvorgänge. |
 | Exponentialfunktion | Bei der Exponentialfunktion steht im Exponenten die Variable. Die bedeutendste Funktion dieser Art hat die Euler'sche Zahl zur Basis. |
@@ -192,7 +193,7 @@ script:   ./dist/index.js
 | Kugel | Die Kugel ist ein geometrisches Objekt in drei Dimensionen, dass radialsymmetrisch mit einem Radius ist. Eine Kugel besitzt keine Kanten oder Ecken. |
 | Kugelabschnitt | Der Kugelabschnitt ist ein Teilstück der Kugel, dass durch eine Ebene abgeschnitten wurde. |
 | Kugelausschnitt | Der Kugelausschnitt ist im Wesentlichen ein Bruchteil einer Kugel. |
-| Kürzen | Brüche können oftmals gekürzt werden, was bedeutet, dass der Zähler und der Nenner durch etwas gleiches dividierbar sind. |
+| Kürzen | Brüche können oftmals gekürzt werden, was bedeutet, dass der Zähler und der Nenner durch etwas gleiches dividierbar sind. | gekürzt |
 | Länge | Gibt in Einheiten die Ausdehnung eines Objektes an. Bei Vektoren gleichzusetzen mit dem Betrag. |
 | Laplace-Entwicklungssatz | Ist ein Verfahren zur Bestimmung der Determinante. |
 | Laplace-Experiment | Bei einem Laplace-Experiment sind alle Elementarereignisse gleich wahrscheinlich, nicht alle Ereignisse. |
@@ -213,12 +214,12 @@ script:   ./dist/index.js
 | Minuend | Der Minuend ist bei der Subtraktion der Term von dem der Subtrahend abgezogen wird. |
 | Mittelsenkrechte | Die Mittelsenkrechte ist eine Gerade, die orthogonal zur betrachten Seite ist. Dabei ist der Schnittpunkt der Seite und der Geraden direkt in der Mitte der Strecke. |
 | Mittelwert | Der Mittelwert kann gebildet werden, indem alle Zahlen aufaddiert und durch die Anzahl der Zahlen dividiert werden. |
-| Multiplikation | Bei der Multiplikation werden Faktoren miteinander verrechnet und bilden das Produkt. |
+| Multiplikation | Bei der Multiplikation werden Faktoren miteinander verrechnet und bilden das Produkt. | multipliziert |
 | Natürliche Zahlen | Die natürlichen Zahlen $\mathbb{N}$ bilden eine Zahlenmenge mit den Zahlen $\mathbb{N} = \left\{0,1,2,3,...\right\}$ |
 | Näherungsverfahren | Ein Verfahren um Ergebnisse von schwer bestimmbaren Sachverhalten zu ermitteln. |
 | • Newton | Ein iteratives Näherungsverfahren zur Bestimmung von Nullstellen. |
 | • Regula-Falsi | Ein iteratives Näherungsverfahren zur Bestimmung von Nullstellen. |
-| Nenner | Der Nenner ist bei der Bruchrechnung der Divisor. |
+| Nenner | Der Nenner ist bei der Bruchrechnung der Divisor. | Nenners |
 | Netz | Ein geometrisches Objekt in drei Dimensionen kann aufgeklappt werden, sodass die Flächen nebeneinander liegen. Dieses neue zweidimensionale Objekt aus Flächen wird Netz genannt. |
 | Neutrales Element | Als neutrales Element werden Zahlen bezeichnet, die bei einer Operation das Ergebnis nicht verändern. Die Null ist das neutrale Element der Addition und die Eins das neutrale Element der Multiplikation. |
 | Norm | Eine Norm ordnet einem Vektor eine nichtnegative Länge zu und erfüllt Definitheit, absolute Homogenität und Dreiecksungleichung. Das Reduzieren auf Länge $1$ heißt Normieren. |

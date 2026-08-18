@@ -5,6 +5,7 @@ export interface GlossaryEntry {
   explanation: string;
   tags: string[];
   links: string[];
+  aliases?: string[];
 }
 
 export interface TaskAttempt {
@@ -15,6 +16,7 @@ export interface TaskAttempt {
 
 export interface MathPathStore {
   glossary: Record<string, GlossaryEntry>;
+  glossaryAliases: Record<string, string>;
   attempts: Record<string, TaskAttempt>;
 }
 

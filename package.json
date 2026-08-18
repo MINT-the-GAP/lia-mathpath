@@ -1,11 +1,13 @@
 {
   "name": "lia-mathpath",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "LiaScript plugin for reusable math path components",
   "scripts": {
     "build": "parcel build src/index.ts --dist-dir dist --no-scope-hoist",
     "preview": "npx http-server . -p 8000 --cors",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test test/dom-ownership.test.mjs"
+    "test": "npm run build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test",
+    "test:browser": "node scripts/browser-check.mjs",
+    "test:browser:remote": "node scripts/browser-check.mjs --remote"
   },
   "keywords": [
     "liascript",
@@ -23,6 +25,7 @@
     "iOS >= 14"
   ],
   "devDependencies": {
+    "jsdom": "^26.1.0",
     "parcel": "^2.15.4",
     "typescript": "^5.9.2"
   },

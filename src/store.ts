@@ -30,10 +30,12 @@ registry.docs[DOC_ID] = true;
 
 ROOT[STOREKEY] = ROOT[STOREKEY] || {
   glossary: {},
+  glossaryAliases: {},
   attempts: {}
 } satisfies MathPathStore;
 
 export const STORE: MathPathStore = ROOT[STOREKEY] as MathPathStore;
+STORE.glossaryAliases = STORE.glossaryAliases || {};
 
 function normalizeHttpUrl(url: string): string | null {
   const raw = String(url || '').trim();
@@ -93,7 +95,11 @@ export function getCourseMarkdownUrl(): string | null {
 }
 
 export function normalizeTermKey(term: string): string {
-  return String(term || '').trim().toLowerCase();
+  return String(term || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .normalize('NFC')
+    .toLocaleLowerCase('de-DE');
 }
 
 function normalizeTags(raw: unknown): string[] {
@@ -116,6 +122,49 @@ function normalizeLinks(raw: unknown): string[] {
     .filter(Boolean);
 }
 
+function normalizeAliases(raw: unknown): string[] {
+  const values = Array.isArray(raw)
+    ? raw.map(v => String(v).trim()).filter(Boolean)
+    : String(raw || '').split(/[,;]+/g).map(v => v.trim()).filter(Boolean);
+  const seen = new Set<string>();
+  return values.map(value => value.normalize('NFC')).filter(value => {
+    const key = normalizeTermKey(value);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function rebuildGlossaryAliases(): void {
+  const aliases: Record<string, string> = {};
+  const entries = Object.values(STORE.glossary);
+  const canonicalKeys = new Set(entries.map(entry => normalizeTermKey(entry.term)).filter(Boolean));
+  const ambiguousAliases = new Set<string>();
+
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    const canonicalKey = normalizeTermKey(entry.term);
+    if (!canonicalKey) continue;
+
+    const entryAliases = normalizeAliases(entry.aliases);
+    entry.aliases = entryAliases;
+    for (let j = 0; j < entryAliases.length; j++) {
+      const aliasKey = normalizeTermKey(entryAliases[j]);
+      if (!aliasKey || canonicalKeys.has(aliasKey) || ambiguousAliases.has(aliasKey)) continue;
+      if (aliases[aliasKey] && aliases[aliasKey] !== canonicalKey) {
+        delete aliases[aliasKey];
+        ambiguousAliases.add(aliasKey);
+        continue;
+      }
+      aliases[aliasKey] = canonicalKey;
+    }
+  }
+
+  STORE.glossaryAliases = aliases;
+}
+
+rebuildGlossaryAliases();
+
 export function setGlossaryEntries(entries: GlossaryEntry[]): number {
   let count = 0;
   for (let i = 0; i < entries.length; i++) {
@@ -124,21 +173,42 @@ export function setGlossaryEntries(entries: GlossaryEntry[]): number {
     if (!key || !String(e.explanation || '').trim()) continue;
 
     STORE.glossary[key] = {
-      term: String(e.term).trim(),
+      term: String(e.term).trim().normalize('NFC'),
       explanation: String(e.explanation).trim(),
       tags: normalizeTags(e.tags),
-      links: normalizeLinks(e.links)
+      links: normalizeLinks(e.links),
+      aliases: normalizeAliases(e.aliases)
     };
     count++;
   }
+  rebuildGlossaryAliases();
   return count;
 }
 
 function parseRow(line: string): string[] {
   const trimmed = line.trim();
   if (!trimmed.includes('|')) return [];
-  const compact = trimmed.replace(/^\|/, '').replace(/\|$/, '');
-  return compact.split('|').map(v => v.trim());
+
+  const cells: string[] = [];
+  let cell = '';
+  for (let i = 0; i < trimmed.length; i++) {
+    const char = trimmed[i];
+    if (char === '|') {
+      let backslashes = 0;
+      for (let j = i - 1; j >= 0 && trimmed[j] === '\\'; j--) backslashes++;
+      if (backslashes % 2 === 0) {
+        cells.push(cell.trim());
+        cell = '';
+        continue;
+      }
+    }
+    cell += char;
+  }
+  cells.push(cell.trim());
+
+  if (cells[0] === '') cells.shift();
+  if (cells[cells.length - 1] === '') cells.pop();
+  return cells;
 }
 
 function looksLikeSeparator(cells: string[]): boolean {
@@ -164,6 +234,7 @@ export function parseGlossaryMarkdown(markdown: string): GlossaryEntry[] {
   );
   const colTags = header.findIndex(h => h.includes('tag'));
   const colLinks = header.findIndex(h => h.includes('link') || h.includes('hint'));
+  const colAliases = header.findIndex(h => h.includes('alias') || h.includes('wortform'));
 
   if (colTerm < 0 || colExp < 0) return [];
 
@@ -177,7 +248,8 @@ export function parseGlossaryMarkdown(markdown: string): GlossaryEntry[] {
       term,
       explanation,
       tags: colTags >= 0 ? normalizeTags(row[colTags]) : [],
-      links: colLinks >= 0 ? normalizeLinks(row[colLinks]) : []
+      links: colLinks >= 0 ? normalizeLinks(row[colLinks]) : [],
+      aliases: colAliases >= 0 ? normalizeAliases(row[colAliases]) : []
     });
   }
   return result;
@@ -185,7 +257,52 @@ export function parseGlossaryMarkdown(markdown: string): GlossaryEntry[] {
 
 export function getGlossaryEntry(term: string): GlossaryEntry | null {
   const key = normalizeTermKey(term);
-  return key && STORE.glossary[key] ? STORE.glossary[key] : null;
+  if (!key) return null;
+  if (STORE.glossary[key]) return STORE.glossary[key];
+
+  const canonicalKey = STORE.glossaryAliases[key];
+  return canonicalKey && STORE.glossary[canonicalKey]
+    ? STORE.glossary[canonicalKey]
+    : null;
+}
+
+export interface GlossaryMatchForm {
+  form: string;
+  term: string;
+  kind: 'term' | 'alias';
+}
+
+/** Return exact, controlled match surfaces with canonical terms taking precedence over aliases. */
+export function getGlossaryMatchForms(): GlossaryMatchForm[] {
+  const forms: GlossaryMatchForm[] = [];
+  const seen = new Set<string>();
+  const entries = Object.values(STORE.glossary);
+
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    const key = normalizeTermKey(entry.term);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    forms.push({ form: entry.term, term: entry.term, kind: 'term' });
+  }
+
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    const entryAliases = normalizeAliases(entry.aliases);
+    const canonicalKey = normalizeTermKey(entry.term);
+    for (let j = 0; j < entryAliases.length; j++) {
+      const key = normalizeTermKey(entryAliases[j]);
+      if (!key || seen.has(key) || STORE.glossaryAliases[key] !== canonicalKey) continue;
+      seen.add(key);
+      forms.push({ form: entryAliases[j], term: entry.term, kind: 'alias' });
+    }
+  }
+
+  return forms.sort((a, b) =>
+    b.form.length - a.form.length ||
+    (a.kind === b.kind ? 0 : a.kind === 'term' ? -1 : 1) ||
+    a.form.localeCompare(b.form, 'de')
+  );
 }
 
 export function registerWrongAttempt(taskId: string, tags: string[] = []): number {
@@ -222,6 +339,7 @@ export function importState(payload: unknown): boolean {
 
   if (obj.glossary && typeof obj.glossary === 'object') {
     STORE.glossary = obj.glossary as MathPathStore['glossary'];
+    rebuildGlossaryAliases();
   }
   if (obj.attempts && typeof obj.attempts === 'object') {
     STORE.attempts = obj.attempts as MathPathStore['attempts'];
