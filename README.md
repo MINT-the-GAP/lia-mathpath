@@ -48,9 +48,10 @@ Erst danach steht das MathPath-Makro `@Explain` im Kurs zur Verfügung.
 
 # Glossarbegriffe sicher verwenden
 
-MathPath ersetzt keine von LiaScript beziehungsweise Elm verwalteten Textknoten. Im normalen
-LiaScript-Kurstext werden deshalb vorhandene semantische Elemente als Begriffsträger verwendet.
-Die automatische Textknoten-Hervorhebung bleibt für nicht von Elm verwaltete DOM-Bereiche aktiv.
+MathPath ersetzt keine von LiaScript beziehungsweise Elm verwalteten Textknoten. Normale
+Glossarbegriffe werden dort als DOM-Ranges erkannt und ohne zusätzliche Wrapper über CSS
+Highlights beziehungsweise einen externen Overlay-Fallback markiert. Hover und Klick werden
+anhand der Range-Rechtecke erkannt. Vorhandene semantische Elemente bleiben Begriffsträger.
 
 ## Kursive Volltreffer
 
@@ -137,6 +138,8 @@ manuelle `[data-lia-term]`-Elemente.
 
 Ein *Bruch* besitzt einen *Zähler* und einen *Nenner*. Mehrere *Brüche* verwenden dieselbe
 Glossarerklärung für den Begriff Bruch.
+
+Die Division ist hier absichtlich normal und nicht kursiv geschrieben.
 
 <div class="notip">
 Hier bleibt <em>Bruch</em> ohne Hervorhebung und Tooltip.

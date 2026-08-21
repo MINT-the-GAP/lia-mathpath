@@ -16,6 +16,11 @@ const EXPECTED_TERMS = [
   { display: 'Nenner', canonical: 'Nenner' },
   { display: 'Brüche', canonical: 'Bruch' }
 ]
+const PLAIN_TERM = {
+  display: 'Division',
+  canonical: 'Division',
+  fixtureText: 'Die Division ist hier absichtlich normal und nicht kursiv geschrieben.'
+}
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 const repositoryRoot = path.resolve(scriptDirectory, '..')
@@ -713,6 +718,78 @@ function locateTermInPage(displayText) {
   }
 }
 
+function locatePlainTermInPage(fixtureText, displayText) {
+  const normalize = value => String(value || '').replace(/\s+/g, ' ').trim()
+  const excludedSelector =
+    'div.notip, pre, code, kbd, samp, script, style, textarea, svg, canvas, .katex, .lia-mathpath-tooltip, .lia-mathpath-range-layer, .lia-mathpath-no-glossary'
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement
+      if (!parent || parent.closest(excludedSelector)) return NodeFilter.FILTER_REJECT
+      const style = getComputedStyle(parent)
+      if (style.display === 'none' || style.visibility === 'hidden' ||
+          Number(style.opacity) === 0 || parent.getClientRects().length === 0) {
+        return NodeFilter.FILTER_SKIP
+      }
+      return node.data.includes(fixtureText)
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_SKIP
+    }
+  })
+  const textNode = walker.nextNode()
+  if (!textNode) return null
+
+  const fixtureStart = textNode.data.indexOf(fixtureText)
+  const termOffset = fixtureText.indexOf(displayText)
+  if (fixtureStart < 0 || termOffset < 0) return null
+
+  const termStart = fixtureStart + termOffset
+  const range = document.createRange()
+  range.setStart(textNode, termStart)
+  range.setEnd(textNode, termStart + displayText.length)
+
+  const parent = textNode.parentElement
+  parent.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' })
+  const rect = Array.from(range.getClientRects()).find(candidate =>
+    candidate.width > 0 && candidate.height > 0
+  )
+  if (!rect) return null
+
+  const x = Math.max(1, Math.min(innerWidth - 2, rect.left + rect.width / 2))
+  const y = Math.max(1, Math.min(innerHeight - 2, rect.top + rect.height / 2))
+  const hit = document.elementFromPoint(x, y)
+  const exactTermElements = Array.from(parent.querySelectorAll('*')).filter(element =>
+    normalize(element.textContent) === displayText
+  )
+
+  return {
+    x,
+    y,
+    width: rect.width,
+    height: rect.height,
+    rangeText: range.toString(),
+    startContainerType: range.startContainer.nodeType,
+    endContainerType: range.endContainer.nodeType,
+    sameTextNode: range.startContainer === textNode && range.endContainer === textNode,
+    textNode: textNode.data,
+    parentTag: parent.tagName,
+    parentText: normalize(parent.textContent),
+    parentChildNodes: Array.from(parent.childNodes, child => ({
+      type: child.nodeType,
+      name: child.nodeName,
+      text: child.nodeType === Node.TEXT_NODE ? child.data : normalize(child.textContent)
+    })),
+    elementChildCount: parent.children.length,
+    exactTermElements: exactTermElements.map(element => element.tagName),
+    decoratedDescendants: parent.querySelectorAll(
+      '[data-lia-term], .lia-mathpath-glossary-highlight, .lia-mathpath-term'
+    ).length,
+    hitTarget: hit === parent || parent.contains(hit),
+    hitTag: hit?.tagName || null,
+    hitText: normalize(hit?.textContent)
+  }
+}
+
 function inspectTooltipInPage(expectedTerm) {
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim()
   const rendered = element => element.getClientRects().length > 0 &&
@@ -861,8 +938,38 @@ function validateNotip(snapshot) {
   return failures
 }
 
+function validatePlainTerm(point) {
+  const failures = []
+  if (!point) return [`normal ${PLAIN_TERM.display} text node was not rendered`]
+  if (point.rangeText !== PLAIN_TERM.display) failures.push(`range contains ${point.rangeText}`)
+  if (point.startContainerType !== NodeTextType || point.endContainerType !== NodeTextType ||
+      !point.sameTextNode) {
+    failures.push('range does not start and end in the original text node')
+  }
+  if (point.textNode !== PLAIN_TERM.fixtureText) failures.push('authored sentence text node was split or replaced')
+  if (point.parentTag !== 'P' || point.parentText !== PLAIN_TERM.fixtureText) {
+    failures.push('authored paragraph changed')
+  }
+  if (point.parentChildNodes.length !== 1 || point.parentChildNodes[0].type !== NodeTextType ||
+      point.parentChildNodes[0].text !== PLAIN_TERM.fixtureText) {
+    failures.push('an element or additional node was inserted into the authored paragraph')
+  }
+  if (point.elementChildCount !== 0 || point.exactTermElements.length !== 0) {
+    failures.push(`normal term was wrapped by ${point.exactTermElements.join(', ') || 'an element'}`)
+  }
+  if (point.decoratedDescendants !== 0) failures.push('authored paragraph contains decorated descendants')
+  return failures
+}
+
 async function termPoint(displayText) {
   const expression = `(${locateTermInPage.toString()})(${JSON.stringify(displayText)})`
+  await evaluate(expression)
+  await delay(100)
+  return evaluate(expression)
+}
+
+async function plainTermPoint() {
+  const expression = `(${locatePlainTermInPage.toString()})(${JSON.stringify(PLAIN_TERM.fixtureText)}, ${JSON.stringify(PLAIN_TERM.display)})`
   await evaluate(expression)
   await delay(100)
   return evaluate(expression)
@@ -896,9 +1003,9 @@ async function tooltipState(expectedTerm) {
   return evaluate(`(${inspectTooltipInPage.toString()})(${JSON.stringify(expectedTerm)})`)
 }
 
-async function checkHover(displayText, expectedTerm) {
+async function checkHover(displayText, expectedTerm, locatePoint = termPoint) {
   await moveMouse(2, 2)
-  const point = await termPoint(displayText)
+  const point = await locatePoint(displayText)
   if (!point) throw new Error(`Could not locate ${displayText}`)
   if (!point.hitTarget) throw new Error(`${displayText} is covered at its center point`)
   await moveMouse(point.x, point.y)
@@ -908,13 +1015,20 @@ async function checkHover(displayText, expectedTerm) {
     4_000,
     100
   )
-  return { point, tooltip }
+  await moveMouse(2, 2)
+  await waitForValue(
+    () => evaluate(`document.querySelectorAll('.lia-mathpath-tooltip[data-open="1"]').length`),
+    count => count === 0,
+    2_000,
+    100
+  )
+  return { point, tooltip, closedAfterPointerLeaves: true }
 }
 
-async function checkClick(displayText, expectedTerm) {
+async function checkClick(displayText, expectedTerm, locatePoint = termPoint) {
   await moveMouse(2, 2)
   await delay(150)
-  const point = await termPoint(displayText)
+  const point = await locatePoint(displayText)
   if (!point) throw new Error(`Could not locate ${displayText}`)
   if (!point.hitTarget) throw new Error(`${displayText} is covered at its center point`)
   await clickMouse(point.x, point.y)
@@ -924,7 +1038,15 @@ async function checkClick(displayText, expectedTerm) {
     4_000,
     100
   )
-  return { point, tooltip }
+  await moveMouse(2, 2)
+  await delay(100)
+  const pinnedTooltip = await waitForValue(
+    () => tooltipState(expectedTerm),
+    value => value?.open && value.titleMatches && value.bodyMatches,
+    2_000,
+    100
+  )
+  return { point, tooltip: pinnedTooltip, openedTooltip: tooltip, pinnedAfterPointerLeaves: true }
 }
 
 async function closeTooltip() {
@@ -1195,6 +1317,18 @@ async function run() {
       notip: exampleSnapshot.notip
     })
 
+    let plainPoint = null
+    try {
+      plainPoint = await plainTermPoint()
+    } catch {
+      // The invariant check below records the missing or malformed range.
+    }
+    const plainFailures = validatePlainTerm(plainPoint)
+    addCheck('Normal glossary term starts in its authored text node', plainFailures.length === 0, {
+      failures: plainFailures,
+      point: plainPoint
+    })
+
     try {
       const hover = await checkHover('Brüche', 'Bruch')
       addCheck('Real hover opens the canonical Bruch tooltip for Brüche', true, hover)
@@ -1206,6 +1340,43 @@ async function run() {
     }
 
     await closeTooltip()
+
+    try {
+      const hover = await checkHover(PLAIN_TERM.display, PLAIN_TERM.canonical, plainTermPoint)
+      addCheck('Real hover opens the Division tooltip for normal text', true, hover)
+    } catch (error) {
+      addCheck('Real hover opens the Division tooltip for normal text', false, {
+        error: errorDetails(error),
+        lastValue: error.lastValue || null
+      })
+    }
+
+    await closeTooltip()
+
+    try {
+      const click = await checkClick(PLAIN_TERM.display, PLAIN_TERM.canonical, plainTermPoint)
+      addCheck('Real click opens the Division tooltip for normal text', true, click)
+    } catch (error) {
+      addCheck('Real click opens the Division tooltip for normal text', false, {
+        error: errorDetails(error),
+        lastValue: error.lastValue || null
+      })
+    }
+
+    await closeTooltip()
+
+    let interactedPlainPoint = null
+    try {
+      interactedPlainPoint = await plainTermPoint()
+    } catch {
+      // The invariant check below records an interaction-time DOM rewrite.
+    }
+    const interactedPlainFailures = validatePlainTerm(interactedPlainPoint)
+    addCheck(
+      'Normal glossary term remains unwrapped after real hover and click',
+      interactedPlainFailures.length === 0,
+      { failures: interactedPlainFailures, point: interactedPlainPoint }
+    )
 
     try {
       const click = await checkClick('Zähler', 'Zähler')
