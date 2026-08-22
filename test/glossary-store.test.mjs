@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import { JSDOM } from 'jsdom'
@@ -38,6 +39,20 @@ test('parses legacy and alias glossary tables without splitting escaped pipes', 
     assert.equal(withAliases[0].term, 'Bruch')
     assert.deepEqual(withAliases[0].aliases, ['Brüche', 'Brüchen'])
     assert.equal(withAliases[0].explanation, 'Ein Teil eines Ganzen.')
+
+    const actualMarkdown = await readFile(new URL('../Glossar.md', import.meta.url), 'utf8')
+    const actualEntries = parseGlossaryMarkdown(actualMarkdown)
+    const actualByTerm = new Map(actualEntries.map(entry => [entry.term, entry]))
+    const actualAliases = actualEntries.flatMap(entry => entry.aliases || [])
+
+    assert.equal(actualEntries.length, 381)
+    assert.deepEqual(actualByTerm.get('Einheit')?.aliases, ['Einheiten'])
+    assert.deepEqual(actualByTerm.get('Zahl')?.aliases, ['Zahlen'])
+    assert.equal(actualAliases.includes('einheitlich'), false)
+    assert.equal(actualByTerm.get('Division')?.aliases.includes('dividiert'), false)
+    assert.equal(actualByTerm.get('Multiplikation')?.aliases.includes('multipliziert'), false)
+    assert.ok(actualByTerm.has('Gleichungssystem'))
+    assert.ok(actualByTerm.has('Standardabweichung'))
   } finally {
     dom.window.close()
     for (const [name, descriptor] of originals) {

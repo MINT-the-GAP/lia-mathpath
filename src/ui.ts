@@ -7,7 +7,9 @@ import {
   getCourseBaseUrl,
   getCourseMarkdownUrl,
   getGlossaryEntry,
+  getGlossaryEntryForText,
   getGlossaryMatchForms,
+  glossaryMatchFormAllowsSurface,
   joinUrl,
   normalizeTermKey
 } from './store';
@@ -758,7 +760,7 @@ function findGlossaryMatches(text: string, matcher: PreparedGlossaryMatcher): Gl
     const leadingBoundary = match[1] || '';
     const matchedText = match[2] || '';
     const form = matcher.bySurface.get(normalizeTermKey(matchedText));
-    if (!form) continue;
+    if (!form || !glossaryMatchFormAllowsSurface(form, matchedText)) continue;
 
     const start = match.index + leadingBoundary.length;
     matches.push({
@@ -1104,7 +1106,7 @@ function activateSemanticTermsInScope(scope: Node): void {
     const element = elements[i];
     if (element.hasAttribute('data-lia-term') || isExcludedGlossaryContext(element)) continue;
 
-    const entry = getGlossaryEntry((element.textContent || '').trim());
+    const entry = getGlossaryEntryForText((element.textContent || '').trim());
     if (!entry) continue;
 
     element.setAttribute('data-lia-term', entry.term);

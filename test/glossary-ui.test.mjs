@@ -710,6 +710,43 @@ test('maps controlled aliases and inflections to canonical entries', async () =>
   )
 })
 
+test('matches noun aliases without matching verbs, derivations or compounds', async () => {
+  await withMathPath(
+    [
+      '<p>Eine Zahl, viele Zahlen; wir zahlen.</p>',
+      '<p>Eine Einheit, mehrere Einheiten, einheitlich, Einheitensystem und Flächeneinheit.</p>',
+      '<p><em>Zahlen</em> <em>zahlen</em></p>'
+    ].join(''),
+    ({ document, api }) => {
+      api.setGlossary([
+        entry('Zahl', ['Zahlen']),
+        entry('Einheit', ['Einheiten'])
+      ])
+
+      const paragraphs = document.querySelectorAll('p')
+      assert.deepEqual(highlights(document, paragraphs[0]).map(element => [
+        element.textContent,
+        element.dataset.liaTerm
+      ]), [
+        ['Zahl', 'Zahl'],
+        ['Zahlen', 'Zahl']
+      ])
+      assert.deepEqual(highlights(document, paragraphs[1]).map(element => [
+        element.textContent,
+        element.dataset.liaTerm
+      ]), [
+        ['Einheit', 'Einheit'],
+        ['Einheiten', 'Einheit']
+      ])
+
+      const semanticTerms = paragraphs[2].querySelectorAll('em')
+      assert.equal(semanticTerms[0].classList.contains('lia-mathpath-glossary-highlight'), true)
+      assert.equal(semanticTerms[0].dataset.liaTerm, 'Zahl')
+      assert.equal(semanticTerms[1].classList.contains('lia-mathpath-glossary-highlight'), false)
+    }
+  )
+})
+
 test('prefers exact and longer matches and avoids uncontrolled compound stemming', async () => {
   await withMathPath(
     '<p>Teilung, Bruchstrich, Bruch und Divisionsoperator.</p>',

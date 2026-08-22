@@ -266,10 +266,45 @@ export function getGlossaryEntry(term: string): GlossaryEntry | null {
     : null;
 }
 
+function beginsWithUppercaseLetter(value: string): boolean {
+  const firstLetter = String(value || '').normalize('NFC').match(/\p{L}/u)?.[0];
+  if (!firstLetter) return false;
+  return firstLetter === firstLetter.toLocaleUpperCase('de-DE') &&
+    firstLetter !== firstLetter.toLocaleLowerCase('de-DE');
+}
+
+/**
+ * Resolve an automatically discovered text surface.
+ * Uppercase-authored aliases represent German nominal forms and must keep their
+ * uppercase initial so homographic verbs such as "zahlen" are not highlighted.
+ */
+export function getGlossaryEntryForText(surface: string): GlossaryEntry | null {
+  const key = normalizeTermKey(surface);
+  if (!key) return null;
+  if (STORE.glossary[key]) return STORE.glossary[key];
+
+  const canonicalKey = STORE.glossaryAliases[key];
+  const entry = canonicalKey ? STORE.glossary[canonicalKey] : null;
+  if (!entry) return null;
+
+  const authoredAlias = normalizeAliases(entry.aliases)
+    .find(alias => normalizeTermKey(alias) === key);
+  if (!authoredAlias || !beginsWithUppercaseLetter(authoredAlias)) return entry;
+  return beginsWithUppercaseLetter(surface) ? entry : null;
+}
+
 export interface GlossaryMatchForm {
   form: string;
   term: string;
   kind: 'term' | 'alias';
+  requiresUppercaseInitial: boolean;
+}
+
+export function glossaryMatchFormAllowsSurface(
+  form: GlossaryMatchForm,
+  surface: string
+): boolean {
+  return !form.requiresUppercaseInitial || beginsWithUppercaseLetter(surface);
 }
 
 /** Return exact, controlled match surfaces with canonical terms taking precedence over aliases. */
@@ -283,7 +318,12 @@ export function getGlossaryMatchForms(): GlossaryMatchForm[] {
     const key = normalizeTermKey(entry.term);
     if (!key || seen.has(key)) continue;
     seen.add(key);
-    forms.push({ form: entry.term, term: entry.term, kind: 'term' });
+    forms.push({
+      form: entry.term,
+      term: entry.term,
+      kind: 'term',
+      requiresUppercaseInitial: false
+    });
   }
 
   for (let i = 0; i < entries.length; i++) {
@@ -294,7 +334,12 @@ export function getGlossaryMatchForms(): GlossaryMatchForm[] {
       const key = normalizeTermKey(entryAliases[j]);
       if (!key || seen.has(key) || STORE.glossaryAliases[key] !== canonicalKey) continue;
       seen.add(key);
-      forms.push({ form: entryAliases[j], term: entry.term, kind: 'alias' });
+      forms.push({
+        form: entryAliases[j],
+        term: entry.term,
+        kind: 'alias',
+        requiresUppercaseInitial: beginsWithUppercaseLetter(entryAliases[j])
+      });
     }
   }
 

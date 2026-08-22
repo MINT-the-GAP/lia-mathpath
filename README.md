@@ -73,9 +73,13 @@ erlaubte Wortformen. Alte Glossare mit nur `Begriff` und `Erklärung` bleiben g�
 | Erweitern | Brüche können durch Erweitern umgeformt werden. | erweitert |
 ```
 
-Begriff und Aliasformen werden ohne Beachtung der Groß- und Kleinschreibung als vollständige
-Wörter abgeglichen. Es findet kein allgemeines Stemming statt. Ein exakter Glossarbegriff hat
-Vorrang vor einer Aliasform; bei überlappenden Treffern wird die längere, genauere Form verwendet.
+Begriff und Aliasformen werden als vollständige Wörter abgeglichen. Kleingeschriebene
+Verb- und Adjektivformen ignorieren dabei die Groß-/Kleinschreibung, damit sie auch am Satzanfang
+funktionieren. Eine großgeschriebene Aliasform kennzeichnet dagegen eine substantivische Form und
+wird im automatisch gescannten Text nur mit großem Anfang markiert. So verweist `Zahlen` auf
+`Zahl`, während das Verb in `wir zahlen` unmarkiert bleibt. Es findet kein allgemeines Stemming
+statt. Ein exakter Glossarbegriff hat Vorrang vor einer Aliasform; bei überlappenden Treffern wird
+die längere, genauere Form verwendet.
 
 
 # Makro `@Explain`
