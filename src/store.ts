@@ -94,6 +94,29 @@ export function getCourseMarkdownUrl(): string | null {
   return null;
 }
 
+/**
+ * Resolve resources next to a course served by a local LiaScript preview.
+ * The preview executes fetched scripts as blob URLs, so the bundle URL itself
+ * cannot reliably identify the project directory.
+ */
+export function getLocalCourseBaseUrl(): string | null {
+  const markdownUrl = getCourseMarkdownUrl();
+  if (!markdownUrl) return null;
+
+  try {
+    const parsed = new URL(markdownUrl);
+    const hostname = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    if (!['localhost', '127.0.0.1', '::1'].includes(hostname)) return null;
+
+    parsed.pathname = parsed.pathname.replace(/\/[^/]*$/, '/');
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString();
+  } catch (_) {
+    return null;
+  }
+}
+
 export function normalizeTermKey(term: string): string {
   return String(term || '')
     .trim()

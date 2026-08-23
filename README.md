@@ -1,13 +1,13 @@
 <!--
 author:   MINT-the-GAP; Martin Lommatzsch
-version:  0.0.3
+version:  0.0.4
 language: de
 edit:     true
 comment:  LiaScript plugin for reusable math path components.
-script:   ./dist/index.js?v=0.0.3
+script:   ./dist/index.js
 
 
-@Explain: <lia-mathpath-explain></lia-mathpath-explain>
+@Explain: <lia-mathpath-explain data-lia-explain-topic="@0"></lia-mathpath-explain>
 
 -->
 
@@ -33,17 +33,29 @@ __Try it on LiaScript:__
 https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md
 
 
+**Live-Test: manuell und außerhalb eines Hints**
 
-In einem LiaScript-Kurs werden `FreezeREADME.md` und MathPath direkt im einzigen
-LiaScript-Hauptkopf und in dieser Reihenfolge eingebunden. Auf verschachtelte
-Template-Imports sollte man sich nicht verlassen:
+<h2> @Explain(Tutorial) </h2>
+
+
+
+Für ein manuell gesetztes Explain-Thema reicht der direkte MathPath-Import im
+einzigen LiaScript-Hauptkopf:
+
+```markdown
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md
+```
+
+Soll `@Explain` das Thema automatisch aus `@ADetails` ermitteln, werden
+`FreezeREADME.md` und MathPath direkt und in dieser Reihenfolge eingebunden.
+Auf verschachtelte Template-Imports sollte man sich nicht verlassen.
 
 ```markdown
 import: https://raw.githubusercontent.com/MINT-the-GAP/Aufgabensammlung/main/imports/FreezeREADME.md
 import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md
 ```
 
-Erst danach steht das MathPath-Makro `@Explain` im Kurs zur Verfügung.
+Nach dem MathPath-Import steht das Makro `@Explain` im Kurs zur Verfügung.
 
 
 # Glossarbegriffe sicher verwenden
@@ -84,23 +96,38 @@ die längere, genauere Form verwendet.
 
 # Makro `@Explain`
 
-Das Makro `@Explain` erzeugt kontextbezogene Erklärungs-Hinweise für Quizfragen.
-Die Themen werden aus `@ADetails(...)` gelesen und mit den Links aus `Explain.md`
-verknüpft.
+Das Makro `@Explain` erzeugt Links zu passenden Erklärungskursen. Ein manuell
+gesetztes Thema wie `@Explain(Tutorial)` kann an beliebiger Stelle im Kurs stehen.
+Beim parameterlosen Aufruf wird das Thema wie bisher aus `@ADetails(...)` gelesen.
+Die Themen werden mit den Links aus `Explain.md` verknüpft.
 
 **Zweck**
 
 - Zeigt Erklärungs-Links passend zur aktuellen Aufgabe
-- Erscheint nur im Hint-Kontext (nicht vorab im Aufgabentext)
+- Kann mit einem manuell gesetzten Thema frei im Kurs platziert werden
+- Kann parameterlos als kontextbezogener Hinweis einer Aufgabe verwendet werden
 - Öffnet Erklärungen im Overlay (90% Fensterbreite und 90% Fensterhöhe)
 
 **Voraussetzungen**
 
-1. `@Explain` muss im Hint-Bereich der Aufgabe stehen.
-2. `@ADetails` muss für die Aufgabe vorhanden sein.
-3. Themen in `@ADetails` werden mit Komma getrennt.
+1. Das manuelle Thema muss der Schreibweise in der ersten Spalte von `Explain.md`
+   entsprechen; Groß-/Kleinschreibung und Akzente werden beim Abgleich normalisiert.
+2. `@Explain(Thema)` benötigt weder ein Quiz noch einen Hint oder `@ADetails`.
+3. Nur für den automatischen Aufruf `@Explain` muss `@ADetails` vorhanden sein.
+   Mehrere Themen in `@ADetails` werden mit Komma getrennt.
 
-**Syntax**
+**Manuell ohne Freeze und außerhalb eines Hints**
+
+```markdown
+Dieser Erklärungskurs kann frei im Kurs verlinkt werden:
+
+@Explain(Tutorial)
+```
+
+Der zugehörige Live-Test steht auf der Startfolie dieses Kurses.
+
+
+**Automatisch mit `@ADetails`**
 
 ```markdown
 <!-- data-hint-button="1" -->
@@ -123,9 +150,11 @@ Bruchrechnung: [[  Test  ]]
 2. Nach dem ersten Prüfen erscheint der native Hint-Button.
 3. Nach Klick auf den Hint-Button werden die Explain-Hinweise eingeblendet.
 4. Klick auf einen Explain-Link öffnet die Zielseite im Overlay statt in einem neuen Tab.
-5. Ist für keines der ermittelten Themen ein Erklärungskurs verlinkt, erscheint stattdessen
+5. Ein explizites Thema aus `@Explain(Thema)` hat Vorrang vor einem vorhandenen
+   `@ADetails`-Kontext.
+6. Ist für keines der ermittelten Themen ein Erklärungskurs verlinkt, erscheint stattdessen
    der Hinweis „Leider gibt es noch keinen automatisch verlinkten Erklärungskurs.“
-6. Die Links und der Hinweis werden im Shadow DOM von `lia-mathpath-explain` gerendert; die native
+7. Die Links und der Hinweis werden im Shadow DOM von `lia-mathpath-explain` gerendert; die native
    Hint-Struktur bleibt vollständig unter LiaScripts Kontrolle.
 
 

@@ -16,6 +16,7 @@ script:   ./dist/index.js
 
 
 | Thema | Link |
+|  Tutorial  |  https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/Aufgabensammlung/refs/heads/main/Repetitorium/Erklaerungen/00_00_00_Tutorial.md  |
 |  Mengen  |  https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/Aufgabensammlung/refs/heads/main/Repetitorium/Erklaerungen/00_00_01_Mengen.md  |
 |  Zahlenverständnis  |  https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/Aufgabensammlung/refs/heads/main/Repetitorium/Erklaerungen/00_00_01_Mengen.md  |
 |  Zahlenverständnis  |  https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/Aufgabensammlung/refs/heads/main/Repetitorium/Erklaerungen/01_00_01_ZiffernZahlen.md  |

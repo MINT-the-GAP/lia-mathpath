@@ -10,6 +10,10 @@ import { fileURLToPath } from 'node:url'
 const DEFAULT_URL =
   'https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md'
 const DEFAULT_TIMEOUT_MS = 45_000
+const TUTORIAL_URL =
+  'https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/Aufgabensammlung/refs/heads/main/Repetitorium/Erklaerungen/00_00_00_Tutorial.md'
+const TUTORIAL_TEXT =
+  'Das Tutorial zeigt dir die wichtigsten LiaScript-Funktionen mit kurzen Erklärungen und GIFs.'
 const EXPECTED_TERMS = [
   { display: 'Bruch', canonical: 'Bruch' },
   { display: 'Zähler', canonical: 'Zähler' },
@@ -44,7 +48,8 @@ const result = {
     served: {
       'README.md': 0,
       'dist/index.js': 0,
-      'Glossar.md': 0
+      'Glossar.md': 0,
+      'Explain.md': 0
     },
     requests: [],
     errors: []
@@ -457,7 +462,8 @@ async function loadOverrideFiles() {
   const definitions = [
     ['README.md', path.join(repositoryRoot, 'README.md'), 'text/markdown; charset=utf-8'],
     ['dist/index.js', path.join(repositoryRoot, 'dist', 'index.js'), 'application/javascript; charset=utf-8'],
-    ['Glossar.md', path.join(repositoryRoot, 'Glossar.md'), 'text/markdown; charset=utf-8']
+    ['Glossar.md', path.join(repositoryRoot, 'Glossar.md'), 'text/markdown; charset=utf-8'],
+    ['Explain.md', path.join(repositoryRoot, 'Explain.md'), 'text/markdown; charset=utf-8']
   ]
   const overrides = new Map()
 
@@ -488,6 +494,7 @@ function overrideNameForUrl(requestUrl) {
   if (/\/readme\.md$/i.test(pathname)) return 'README.md'
   if (/\/dist\/index\.js$/i.test(pathname)) return 'dist/index.js'
   if (/\/glossar\.md$/i.test(pathname)) return 'Glossar.md'
+  if (/\/explain\.md$/i.test(pathname)) return 'Explain.md'
   return null
 }
 
@@ -662,6 +669,59 @@ function inspectExampleInPage() {
     ).length,
     tooltipElements: document.querySelectorAll('.lia-mathpath-tooltip').length,
     visibleTooltipCount
+  }
+}
+
+function inspectManualExplainInPage() {
+  const normalize = value => String(value || '').replace(/\s+/g, ' ').trim()
+  const isRendered = element => {
+    if (!(element instanceof Element)) return false
+    const style = getComputedStyle(element)
+    if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') return false
+    if (Number(style.opacity) === 0) return false
+    return element.getClientRects().length > 0
+  }
+  const hosts = Array.from(document.querySelectorAll(
+    'lia-mathpath-explain[data-lia-explain-topic="Tutorial"]'
+  ))
+  const host = hosts.find(isRendered) || null
+  const link = host?.shadowRoot?.querySelector('.lia-mathpath-explain-link') || null
+  const headings = Array.from(document.querySelectorAll('h1, h2, h3'))
+    .filter(isRendered)
+    .map(element => normalize(element.textContent))
+
+  return {
+    href: location.href,
+    hash: location.hash,
+    headings,
+    fingerprint: `${location.hash}|${headings.join('|')}|${normalize(document.body?.innerText).slice(0, 240)}`,
+    found: Boolean(host && link && isRendered(link)),
+    topic: host?.getAttribute('data-lia-explain-topic') || null,
+    outsideHintContext: host
+      ? !host.closest('.lia-quiz, [data-hint], [data-hint-button]')
+      : null,
+    linkText: link ? normalize(link.textContent) : null,
+    itemText: link ? normalize(link.closest('li')?.textContent) : null,
+    linkHref: link?.getAttribute('data-lia-explain-href') || link?.getAttribute('href') || null,
+    hostCount: hosts.length
+  }
+}
+
+function clickManualExplainInPage() {
+  const host = Array.from(document.querySelectorAll(
+    'lia-mathpath-explain[data-lia-explain-topic="Tutorial"]'
+  )).find(element => element.getClientRects().length > 0)
+  const link = host?.shadowRoot?.querySelector('.lia-mathpath-explain-link')
+  if (!link) return { clicked: false }
+
+  link.click()
+  const overlay = document.querySelector('.lia-mathpath-explain-overlay')
+  const frame = overlay?.querySelector('.lia-mathpath-explain-frame')
+  return {
+    clicked: true,
+    open: overlay?.getAttribute('data-open') === '1',
+    frameSrc: frame?.getAttribute('src') || null,
+    bodyLocked: document.body.classList.contains('lia-mathpath-overlay-open')
   }
 }
 
@@ -841,6 +901,10 @@ async function inspectExample() {
   return evaluate(`(${inspectExampleInPage.toString()})()`)
 }
 
+async function inspectManualExplain() {
+  return evaluate(`(${inspectManualExplainInPage.toString()})()`)
+}
+
 function recordSlide(label, snapshot) {
   result.slidesVisited.push({
     label,
@@ -886,6 +950,42 @@ async function navigateToExample() {
   for (let step = 1; step <= 30; step += 1) {
     const previousFingerprint = snapshot.fingerprint
     snapshot = await snapshotAfterKey('ArrowRight', previousFingerprint, `ArrowRight-${step}`)
+    if (snapshot.found) return snapshot
+    unchangedSteps = snapshot.fingerprint === previousFingerprint ? unchangedSteps + 1 : 0
+    if (unchangedSteps >= 2) break
+  }
+  return snapshot
+}
+
+async function manualExplainSnapshotAfterKey(key, previousFingerprint) {
+  await pressKey(key)
+  let snapshot
+  try {
+    snapshot = await waitForValue(
+      inspectManualExplain,
+      value => Boolean(value?.found) || value?.fingerprint !== previousFingerprint,
+      2_500,
+      100
+    )
+  } catch (error) {
+    snapshot = error.lastValue || await inspectManualExplain()
+  }
+  await delay(250)
+  return inspectManualExplain()
+}
+
+async function navigateToManualExplain() {
+  await evaluate('window.focus(); document.body?.focus(); true')
+  let snapshot = await inspectManualExplain()
+  if (snapshot.found) return snapshot
+
+  snapshot = await manualExplainSnapshotAfterKey('Home', snapshot.fingerprint)
+  if (snapshot.found) return snapshot
+
+  let unchangedSteps = 0
+  for (let step = 1; step <= 30; step += 1) {
+    const previousFingerprint = snapshot.fingerprint
+    snapshot = await manualExplainSnapshotAfterKey('ArrowRight', previousFingerprint)
     if (snapshot.found) return snapshot
     unchangedSteps = snapshot.fingerprint === previousFingerprint ? unchangedSteps + 1 : 0
     if (unchangedSteps >= 2) break
@@ -1270,10 +1370,57 @@ async function run() {
   }
 
   if (!options.remote) {
+    let manualExplain = null
+    try {
+      manualExplain = await navigateToManualExplain()
+      const rendersFreely = manualExplain.found &&
+        manualExplain.topic === 'Tutorial' &&
+        manualExplain.outsideHintContext === true &&
+        manualExplain.linkText === 'Tutorial' &&
+        manualExplain.itemText === TUTORIAL_TEXT &&
+        manualExplain.linkHref === TUTORIAL_URL
+      addCheck('@Explain(Tutorial) renders outside quiz and hint contexts', rendersFreely, {
+        expectedHref: TUTORIAL_URL,
+        expectedText: TUTORIAL_TEXT,
+        snapshot: manualExplain
+      })
+
+      if (rendersFreely) {
+        const overlay = await evaluate(`(${clickManualExplainInPage.toString()})()`)
+        const overlayWorks = overlay.clicked &&
+          overlay.open &&
+          overlay.bodyLocked &&
+          overlay.frameSrc === TUTORIAL_URL
+        addCheck('@Explain(Tutorial) opens the Tutorial course in the overlay', overlayWorks, {
+          expectedHref: TUTORIAL_URL,
+          overlay
+        })
+        await evaluate(
+          "document.querySelector('.lia-mathpath-explain-close')?.click(); true"
+        )
+      } else {
+        addCheck('@Explain(Tutorial) opens the Tutorial course in the overlay', false, {
+          skipped: true,
+          reason: 'The freely placed Tutorial link was not rendered correctly.'
+        })
+      }
+    } catch (error) {
+      addCheck('@Explain(Tutorial) renders outside quiz and hint contexts', false, {
+        error: errorDetails(error),
+        lastValue: error.lastValue || manualExplain
+      })
+      addCheck('@Explain(Tutorial) opens the Tutorial course in the overlay', false, {
+        skipped: true,
+        reason: 'The freely placed Tutorial link could not be reached.'
+      })
+    }
+  }
+
+  if (!options.remote) {
     const missingOverrides = Object.entries(result.overrides.served)
       .filter(([, count]) => count < 1)
       .map(([name]) => name)
-    addCheck('Local README, bundle, and glossary overrides were served', missingOverrides.length === 0, {
+    addCheck('Local README, bundle, glossary, and explanation overrides were served', missingOverrides.length === 0, {
       served: result.overrides.served,
       missing: missingOverrides,
       errors: result.overrides.errors

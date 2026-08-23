@@ -9,6 +9,7 @@ import {
   getGlossaryEntry,
   getGlossaryEntryForText,
   getGlossaryMatchForms,
+  getLocalCourseBaseUrl,
   glossaryMatchFormAllowsSurface,
   joinUrl,
   normalizeTermKey
@@ -72,6 +73,7 @@ const EXCLUDED_CONTEXT_SELECTOR = [
   '.lia-mathpath-no-glossary'
 ].join(', ');
 const EXPLAIN_ELEMENT_TAG = 'lia-mathpath-explain';
+const EXPLAIN_TOPIC_ATTRIBUTE = 'data-lia-explain-topic';
 const EXPLAIN_EMPTY_MESSAGE = 'Leider gibt es noch keinen automatisch verlinkten Erklärungskurs.';
 const EXPLAIN_ELEMENT_STYLE = [
   ':host {',
@@ -109,6 +111,16 @@ function normalizeTopicKey(topic: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[.!?,;:]+$/g, '')
     .replace(/\s+/g, ' ');
+}
+
+function getExplicitExplainTopic(context: Element): string | null {
+  const topic = decodeTopicSeparators(
+    context.getAttribute(EXPLAIN_TOPIC_ATTRIBUTE) || ''
+  ).trim();
+
+  // LiaScript keeps an unbound @0 placeholder when the macro is called
+  // without parentheses. Treat it like an omitted optional argument.
+  return topic && topic !== '@0' ? topic : null;
 }
 
 function parseExplainMarkdown(markdown: string): Record<string, string> {
@@ -212,7 +224,16 @@ function ensureExplainLinksLoaded(): Promise<void> {
 
   _explainLoadPromise = (async () => {
     const baseUrl = getCourseBaseUrl();
-    const candidates = [joinUrl(baseUrl, 'Explain.md')];
+    const candidates: string[] = [];
+    const localCourseBaseUrl = getLocalCourseBaseUrl();
+    if (localCourseBaseUrl) {
+      candidates.push(joinUrl(localCourseBaseUrl, 'Explain.md'));
+    }
+
+    const pluginExplainUrl = joinUrl(baseUrl, 'Explain.md');
+    if (!candidates.includes(pluginExplainUrl)) {
+      candidates.push(pluginExplainUrl);
+    }
 
     for (let i = 0; i < candidates.length; i++) {
       try {
@@ -344,6 +365,15 @@ function buildExplainItem(topic: string, link: string): HTMLLIElement {
   a.setAttribute('data-lia-explain-href', link);
   a.textContent = topic;
 
+  if (normalizeTopicKey(topic) === normalizeTopicKey('Tutorial')) {
+    item.appendChild(document.createTextNode('Das '));
+    item.appendChild(a);
+    item.appendChild(document.createTextNode(
+      ' zeigt dir die wichtigsten LiaScript-Funktionen mit kurzen Erklärungen und GIFs.'
+    ));
+    return item;
+  }
+
   item.appendChild(document.createTextNode('Schau dir nochmal die Erklärung zum Thema '));
   item.appendChild(a);
   item.appendChild(document.createTextNode(' an, dann klappt es bestimmt.'));
@@ -351,19 +381,22 @@ function buildExplainItem(topic: string, link: string): HTMLLIElement {
 }
 
 function buildExplainListForContext(context: Element): HTMLUListElement | null {
-  let topics: string[] = [];
+  const explicitTopic = getExplicitExplainTopic(context);
+  let topics: string[] = explicitTopic ? [explicitTopic] : [];
 
-  const details = findRelatedADetails(context);
-  if (details) {
-    topics = extractTopicsFromDetailElement(details);
-  }
+  if (!explicitTopic) {
+    const details = findRelatedADetails(context);
+    if (details) {
+      topics = extractTopicsFromDetailElement(details);
+    }
 
-  if (topics.length === 0) {
-    const quiz = context.closest('.lia-quiz');
-    const quizzes = Array.from(document.querySelectorAll('.lia-quiz'));
-    const quizIndex = quiz ? quizzes.indexOf(quiz) + 1 : 0;
-    if (quizIndex > 0 && _adetailsTopicsByTaskIndex[quizIndex]) {
-      topics = _adetailsTopicsByTaskIndex[quizIndex];
+    if (topics.length === 0) {
+      const quiz = context.closest('.lia-quiz');
+      const quizzes = Array.from(document.querySelectorAll('.lia-quiz'));
+      const quizIndex = quiz ? quizzes.indexOf(quiz) + 1 : 0;
+      if (quizIndex > 0 && _adetailsTopicsByTaskIndex[quizIndex]) {
+        topics = _adetailsTopicsByTaskIndex[quizIndex];
+      }
     }
   }
 
