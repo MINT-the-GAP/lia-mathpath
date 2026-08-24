@@ -110,6 +110,57 @@ function addCheck(name, ok, details = {}) {
   return check.ok
 }
 
+function rgbChannels(value) {
+  const channels = String(value || '').match(/[\d.]+/g)?.slice(0, 3).map(Number) || []
+  return channels.length === 3 && channels.every(Number.isFinite) ? channels : null
+}
+
+function relativeLuminance(channels) {
+  const linear = channels.map(channel => {
+    const value = channel / 255
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+}
+
+function colorContrast(first, second) {
+  const firstChannels = rgbChannels(first)
+  const secondChannels = rgbChannels(second)
+  if (!firstChannels || !secondChannels) return 0
+  const firstLuminance = relativeLuminance(firstChannels)
+  const secondLuminance = relativeLuminance(secondChannels)
+  return (Math.max(firstLuminance, secondLuminance) + 0.05) /
+    (Math.min(firstLuminance, secondLuminance) + 0.05)
+}
+
+function sameRgb(first, second) {
+  const firstChannels = rgbChannels(first)
+  const secondChannels = rgbChannels(second)
+  return Boolean(firstChannels && secondChannels &&
+    firstChannels.every((channel, index) => channel === secondChannels[index]))
+}
+
+function explainThemeFailures(snapshot) {
+  const failures = []
+  if (!snapshot?.overlayOpen) failures.push('overlay is not open')
+  if (!snapshot?.close) return [...failures, 'close button is missing']
+  if (snapshot.close.text !== 'Schlie\u00dfen') failures.push(`close text is ${snapshot.close.text || 'empty'}`)
+  if (snapshot.close.width <= 0 || snapshot.close.height <= 0) failures.push('close button has no rendered size')
+  if (!snapshot.close.hitTarget) failures.push('close button is not hit-testable')
+  const contrast = colorContrast(snapshot.close.color, snapshot.close.backgroundColor)
+  if (contrast < 4.5) failures.push(`close button contrast is ${contrast.toFixed(2)}`)
+  if (!sameRgb(snapshot.dialog?.backgroundColor, snapshot.variables.surface)) {
+    failures.push('dialog does not use the synchronized course surface')
+  }
+  if (!sameRgb(snapshot.header?.backgroundColor, snapshot.variables.surface)) {
+    failures.push('header does not use the synchronized course surface')
+  }
+  if (!sameRgb(snapshot.frame?.backgroundColor, snapshot.variables.surface)) {
+    failures.push('frame does not use the synchronized course surface')
+  }
+  return failures
+}
+
 function parseArguments(argv) {
   const options = {
     remote: false,
@@ -863,6 +914,136 @@ function clickManualExplainInPage() {
   }
 }
 
+function inspectTutorialDynFlexInPage() {
+  const frame = document.querySelector('.lia-mathpath-explain-frame')
+  if (!(frame instanceof HTMLIFrameElement)) {
+    return { frameFound: false, accessible: false }
+  }
+
+  try {
+    const doc = frame.contentDocument
+    const win = frame.contentWindow
+    if (!doc || !win) {
+      return { frameFound: true, accessible: false }
+    }
+
+    const containers = Array.from(doc.querySelectorAll('.dynFlex'))
+    const items = Array.from(doc.querySelectorAll('.dynFlex > .dynFlexItem'))
+    const resizers = Array.from(doc.querySelectorAll(
+      '.dynFlex > .dynFlexItem > .dynFlexResizer'
+    ))
+    const visibleContainers = containers.filter(container => {
+      const style = win.getComputedStyle(container)
+      return style.display !== 'none' && style.visibility !== 'hidden' &&
+        Number(style.opacity) !== 0 && container.getClientRects().length > 0
+    })
+
+    return {
+      frameFound: true,
+      accessible: true,
+      href: win.location.href,
+      readyState: doc.readyState,
+      title: doc.title,
+      containerCount: containers.length,
+      visibleContainerCount: visibleContainers.length,
+      flexDisplayCount: containers.filter(container =>
+        win.getComputedStyle(container).display === 'flex'
+      ).length,
+      initializedContainerCount: containers.filter(container =>
+        container.querySelector(':scope > .dynFlexItem')
+      ).length,
+      itemCount: items.length,
+      resizerCount: resizers.length,
+      boundResizerCount: resizers.filter(resizer =>
+        resizer.getAttribute('data-bound') === '1'
+      ).length,
+      styleCount: doc.querySelectorAll('#lia-dynflex-style-v1-0').length,
+      dynFlexDocumentKey: doc.documentElement.getAttribute('data-dynflex-doc')
+    }
+  } catch (error) {
+    return {
+      frameFound: true,
+      accessible: false,
+      error: String(error)
+    }
+  }
+}
+
+function installThemeRegressionButtonInPage() {
+  const id = 'lia-mathpath-theme-regression-foreign-button'
+  let button = document.getElementById(id)
+  if (!button) {
+    button = document.createElement('button')
+    button.id = id
+    button.type = 'button'
+    button.textContent = 'Fremder Kursbutton'
+    button.style.cssText = 'position:fixed;left:-10000px;top:-10000px;color:inherit;'
+    document.body.prepend(button)
+  }
+  return {
+    installed: true,
+    firstButtonId: document.querySelector('button')?.id || null,
+    color: getComputedStyle(button).color
+  }
+}
+
+function inspectExplainThemeInPage() {
+  const describe = element => {
+    if (!element) return null
+    const style = getComputedStyle(element)
+    const rect = element.getBoundingClientRect()
+    const x = Math.max(1, Math.min(innerWidth - 2, rect.left + rect.width / 2))
+    const y = Math.max(1, Math.min(innerHeight - 2, rect.top + rect.height / 2))
+    const hit = rect.width > 0 && rect.height > 0 ? document.elementFromPoint(x, y) : null
+    return {
+      text: String(element.textContent || '').replace(/\s+/g, ' ').trim(),
+      backgroundColor: style.backgroundColor,
+      color: style.color,
+      borderColor: style.borderColor,
+      webkitTextFillColor: style.webkitTextFillColor || null,
+      width: rect.width,
+      height: rect.height,
+      hitTarget: hit === element || element.contains(hit)
+    }
+  }
+  const root = document.documentElement
+  const rootStyle = getComputedStyle(root)
+  const bodyStyle = getComputedStyle(document.body)
+  const overlay = document.querySelector('.lia-mathpath-explain-overlay')
+
+  return {
+    rootClass: root.className,
+    variables: {
+      accent: rootStyle.getPropertyValue('--lia-mathpath-accent-rgb').trim(),
+      accentContrast: rootStyle.getPropertyValue('--lia-mathpath-accent-contrast-rgb').trim(),
+      surface: rootStyle.getPropertyValue('--lia-mathpath-surface-rgb').trim(),
+      text: rootStyle.getPropertyValue('--lia-mathpath-text-rgb').trim()
+    },
+    body: {
+      backgroundColor: bodyStyle.backgroundColor,
+      color: bodyStyle.color
+    },
+    overlayOpen: overlay?.getAttribute('data-open') === '1',
+    dialog: describe(overlay?.querySelector('.lia-mathpath-explain-dialog')),
+    header: describe(overlay?.querySelector('.lia-mathpath-explain-header')),
+    close: describe(overlay?.querySelector('.lia-mathpath-explain-close')),
+    frame: describe(overlay?.querySelector('.lia-mathpath-explain-frame')),
+    toggleFound: Boolean(document.getElementById('lia-btn-light-mode'))
+  }
+}
+
+function toggleLiaThemeInPage() {
+  const button = document.getElementById('lia-btn-light-mode')
+  if (!(button instanceof HTMLElement)) return false
+  button.click()
+  return true
+}
+
+function removeThemeRegressionButtonInPage() {
+  document.getElementById('lia-mathpath-theme-regression-foreign-button')?.remove()
+  return true
+}
+
 function inspectApiInPage() {
   const api = window.__LIA_MATHPATH__
   const terms = ['Bruch', 'Zähler', 'Nenner', 'Brüche']
@@ -1613,11 +1794,135 @@ async function run() {
         expectedHref: TUTORIAL_URL,
         overlay
       })
+
+      if (overlayWorks) {
+        let dynFlex = null
+        try {
+          dynFlex = await waitForValue(
+            () => evaluate(`(${inspectTutorialDynFlexInPage.toString()})()`),
+            value => value?.accessible === true &&
+              value.readyState === 'complete' &&
+              value.containerCount > 0 &&
+              value.visibleContainerCount > 0 &&
+              value.flexDisplayCount === value.containerCount &&
+              value.initializedContainerCount === value.containerCount &&
+              value.itemCount > 0 &&
+              value.resizerCount === value.itemCount &&
+              value.boundResizerCount === value.resizerCount &&
+              value.styleCount === 1,
+            20_000,
+            250
+          )
+          addCheck('@Explain(Tutorial) initializes DynFlex inside the course iframe', true, {
+            snapshot: dynFlex
+          })
+        } catch (error) {
+          addCheck('@Explain(Tutorial) initializes DynFlex inside the course iframe', false, {
+            error: errorDetails(error),
+            snapshot: error.lastValue || dynFlex
+          })
+        }
+
+        let themeBefore = null
+        let themeAfter = null
+        let themeToggled = false
+        let foreignButton = null
+        try {
+          foreignButton = await evaluate(`(${installThemeRegressionButtonInPage.toString()})()`)
+          themeBefore = await evaluate(`(${inspectExplainThemeInPage.toString()})()`)
+          const toggled = await evaluate(`(${toggleLiaThemeInPage.toString()})()`)
+          themeToggled = Boolean(toggled)
+          if (!toggled) throw new Error('The LiaScript light/dark toggle was not found.')
+
+          const beforeFingerprint = [
+            themeBefore.rootClass,
+            themeBefore.body?.backgroundColor,
+            themeBefore.variables?.surface,
+            themeBefore.variables?.text
+          ].join('|')
+          themeAfter = await waitForValue(
+            () => evaluate(`(${inspectExplainThemeInPage.toString()})()`),
+            value => [
+              value?.rootClass,
+              value?.body?.backgroundColor,
+              value?.variables?.surface,
+              value?.variables?.text
+            ].join('|') !== beforeFingerprint,
+            5_000,
+            100
+          )
+          await delay(150)
+          themeAfter = await evaluate(`(${inspectExplainThemeInPage.toString()})()`)
+
+          const failures = [
+            ...explainThemeFailures(themeBefore).map(message => `before toggle: ${message}`),
+            ...explainThemeFailures(themeAfter).map(message => `after toggle: ${message}`)
+          ]
+          if (foreignButton?.firstButtonId !== 'lia-mathpath-theme-regression-foreign-button') {
+            failures.push('foreign regression button was not the first page button')
+          }
+          if (themeBefore.variables?.surface === themeAfter.variables?.surface &&
+              themeBefore.variables?.text === themeAfter.variables?.text) {
+            failures.push('synchronized course colors did not change with the LiaScript theme')
+          }
+
+          addCheck('Explain overlay remains readable across the LiaScript light/dark switch', failures.length === 0, {
+            failures,
+            foreignButton,
+            beforeContrast: colorContrast(themeBefore.close?.color, themeBefore.close?.backgroundColor),
+            afterContrast: colorContrast(themeAfter.close?.color, themeAfter.close?.backgroundColor),
+            before: themeBefore,
+            after: themeAfter
+          })
+        } catch (error) {
+          addCheck('Explain overlay remains readable across the LiaScript light/dark switch', false, {
+            error: errorDetails(error),
+            foreignButton,
+            before: themeBefore,
+            after: themeAfter || error.lastValue || null
+          })
+        } finally {
+          if (themeToggled) {
+            await evaluate(`(${toggleLiaThemeInPage.toString()})()`)
+            if (themeBefore) {
+              try {
+                await waitForValue(
+                  () => evaluate(`(${inspectExplainThemeInPage.toString()})()`),
+                  value => value?.variables?.surface === themeBefore.variables?.surface &&
+                    value?.variables?.text === themeBefore.variables?.text,
+                  5_000,
+                  100
+                )
+              } catch {
+                // The remaining checks do not depend on the restored visual theme.
+              }
+            }
+          }
+          await evaluate(`(${removeThemeRegressionButtonInPage.toString()})()`)
+        }
+      } else {
+        addCheck('@Explain(Tutorial) initializes DynFlex inside the course iframe', false, {
+          skipped: true,
+          reason: 'The explanation overlay did not open correctly.'
+        })
+        addCheck('Explain overlay remains readable across the LiaScript light/dark switch', false, {
+          skipped: true,
+          reason: 'The explanation overlay did not open correctly.'
+        })
+      }
       await evaluate(
         "document.querySelector('.lia-mathpath-explain-close')?.click(); true"
       )
     } else {
       addCheck('@Explain(Tutorial) opens the Tutorial course in the overlay', false, {
+        skipped: true,
+        reason: 'The freely placed Tutorial link was not rendered correctly.'
+      })
+      addCheck('@Explain(Tutorial) initializes DynFlex inside the course iframe', false, {
+        skipped: true,
+        reason: 'The freely placed Tutorial link was not rendered correctly.'
+      })
+      addCheck('Explain overlay remains readable across the LiaScript light/dark switch', false, {
         skipped: true,
         reason: 'The freely placed Tutorial link was not rendered correctly.'
       })
@@ -1628,6 +1933,14 @@ async function run() {
       lastValue: error.lastValue || manualExplain
     })
     addCheck('@Explain(Tutorial) opens the Tutorial course in the overlay', false, {
+      skipped: true,
+      reason: 'The freely placed Tutorial link could not be reached.'
+    })
+    addCheck('@Explain(Tutorial) initializes DynFlex inside the course iframe', false, {
+      error: errorDetails(error),
+      skipped: true
+    })
+    addCheck('Explain overlay remains readable across the LiaScript light/dark switch', false, {
       skipped: true,
       reason: 'The freely placed Tutorial link could not be reached.'
     })

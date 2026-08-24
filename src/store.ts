@@ -4,16 +4,52 @@ import type { GlossaryEntry, MathPathStore, TaskAttempt } from './types';
 
 type RootWindow = Window & { [key: string]: unknown };
 
-function getRootWindow(): RootWindow {
-  let w = window as unknown as RootWindow;
+function isLiaScriptHost(win: Window): boolean {
   try {
-    while (w.parent && w.parent !== (w as unknown as Window)) {
-      w = w.parent as RootWindow;
-    }
+    return !!win.document.querySelector(
+      '#lia-toolbar-nav, header.lia-header, .lia-canvas'
+    );
   } catch (_) {
-    // Cross-origin parent access is expected to fail in some embeds.
+    return false;
   }
-  return w;
+}
+
+function isLiveEditorPreview(win: Window): boolean {
+  try {
+    return (win.frameElement as HTMLElement | null)?.id === 'liascript-preview';
+  } catch (_) {
+    return false;
+  }
+}
+
+function getRootWindow(): RootWindow {
+  const contentWindow = window as unknown as RootWindow;
+  let candidate = contentWindow;
+
+  while (true) {
+    // A nested LiaScript course (for example an @Explain overlay or a
+    // LiveEditor preview) owns its own state and UI. Do not leak into the
+    // surrounding course/editor just because both documents share an origin.
+    if (
+      isLiveEditorPreview(candidate as unknown as Window) ||
+      isLiaScriptHost(candidate as unknown as Window)
+    ) {
+      return candidate;
+    }
+
+    try {
+      const parent = candidate.parent as unknown as RootWindow;
+      if (!parent || parent === candidate) return contentWindow;
+
+      // Probe access before advancing. Reading arbitrary properties from a
+      // cross-origin WindowProxy after the loop would otherwise throw and stop
+      // the complete MathPath bundle during LMS/online embeds.
+      void parent.document;
+      candidate = parent;
+    } catch (_) {
+      return contentWindow;
+    }
+  }
 }
 
 export const ROOT: RootWindow = getRootWindow();

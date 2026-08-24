@@ -214,6 +214,49 @@ async function assertVirtualHoverCloses(dispatchExit) {
   })
 }
 
+test('follows LiaScript light and dark theme tokens instead of arbitrary button text colors', async () => {
+  const themeFixture = [
+    '<style>',
+    '  html {',
+    '    --color-highlight: 20, 115, 117;',
+    '    --color-background: 250, 250, 250;',
+    '    --color-text: 24, 28, 34;',
+    '  }',
+    '  html.lia-variant-dark {',
+    '    --color-highlight: 150, 230, 235;',
+    '    --color-background: 35, 39, 45;',
+    '    --color-text: 245, 247, 250;',
+    '  }',
+    '</style>',
+    '<button style="color: rgb(255, 255, 255)">fremder Kursbutton</button>',
+    '<main class="lia-slide__content">Theme-Probe</main>'
+  ].join('')
+
+  await withMathPath(themeFixture, async ({ document }) => {
+    const root = document.documentElement
+    const value = property => root.style.getPropertyValue(property).trim()
+
+    assert.equal(value('--lia-mathpath-accent-rgb'), '20, 115, 117')
+    assert.equal(value('--lia-mathpath-accent-contrast-rgb'), '255, 255, 255')
+    assert.equal(value('--lia-mathpath-surface-rgb'), '250, 250, 250')
+    assert.equal(value('--lia-mathpath-text-rgb'), '24, 28, 34')
+
+    root.classList.add('lia-variant-dark')
+    await flushDomWork()
+
+    assert.equal(value('--lia-mathpath-accent-rgb'), '150, 230, 235')
+    assert.equal(value('--lia-mathpath-accent-contrast-rgb'), '0, 0, 0')
+    assert.equal(value('--lia-mathpath-surface-rgb'), '35, 39, 45')
+    assert.equal(value('--lia-mathpath-text-rgb'), '245, 247, 250')
+
+    const css = document.getElementById('lia-mathpath-style-v1')?.textContent || ''
+    assert.match(css, /lia-mathpath-explain-dialog[\s\S]*background: rgb\(var\(--lia-mathpath-surface-rgb/)
+    assert.match(css, /lia-mathpath-explain-close[\s\S]*--lia-mathpath-accent-contrast-rgb/)
+    assert.match(css, /lia-mathpath-tooltip[\s\S]*background: rgba\(var\(--lia-mathpath-surface-rgb/)
+    assert.doesNotMatch(css, /background:\s*#fff/)
+  }, { realObserver: true })
+})
+
 test('activates an Elm-owned em without replacing the element or its text node', async () => {
   await withMathPath('<p><em>Bruch</em></p>', ({ document, api }) => {
     const paragraph = markElmOwned(document.querySelector('p'))

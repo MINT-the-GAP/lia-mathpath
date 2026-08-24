@@ -1,6 +1,6 @@
 <!--
 author:   MINT-the-GAP; Martin Lommatzsch
-version:  0.0.6
+version:  0.0.8
 language: de
 edit:     true
 comment:  LiaScript plugin for reusable math path components.

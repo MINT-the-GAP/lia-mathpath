@@ -101,13 +101,20 @@ if (!IS_DUPLICATE) {
   observeDynamicContent();
   registerGlobalApi();
 
-  const accentObserver = new MutationObserver(() => {
-    syncAccentColor();
+  const themeObserver = new MutationObserver(records => {
+    const shouldSync = records.some(record => {
+      const target = record.target;
+      if (!(target instanceof Element)) return false;
+      if (target === document.documentElement || target === document.body) return true;
+      if (record.attributeName?.startsWith('data-')) return true;
+      return target.matches('.lia-slide, .lia-slide__content, .lia-content, main');
+    });
+    if (shouldSync) syncAccentColor();
   });
 
-  accentObserver.observe(document.documentElement, {
+  themeObserver.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ['style', 'class'],
+    attributeFilter: ['style', 'class', 'data-theme', 'data-mode', 'data-color-scheme', 'data-bs-theme'],
     childList: false,
     subtree: true
   });
