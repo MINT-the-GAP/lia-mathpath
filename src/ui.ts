@@ -38,9 +38,12 @@ let _virtualOverlay: HTMLDivElement | null = null;
 let _virtualPaintFrame = 0;
 let _virtualResizeObserver: ResizeObserver | null = null;
 let _lastVirtualPointerPoint: { clientX: number; clientY: number } | null = null;
+let _automaticTooltipsEnabled = true;
 
 const VIRTUAL_HIGHLIGHT_NAME = 'lia-mathpath-glossary';
 const VIRTUAL_HOVER_HIGHLIGHT_NAME = 'lia-mathpath-glossary-hover';
+const AUTOMATIC_TERM_ATTRIBUTE = 'data-lia-mathpath-auto-term';
+const TOOLTIP_MODE_ATTRIBUTE = 'data-lia-mathpath-tooltips';
 const PLUGIN_OWNED_SELECTOR = [
   '.lia-mathpath-tooltip',
   '.lia-mathpath-range-layer',
@@ -653,6 +656,7 @@ function showEntryAtRect(term: string, targetRect: DOMRect, isNested = false): v
 
 function showForTarget(target: Element): void {
   if (!target.isConnected || isExcludedGlossaryContext(target)) return;
+  if (!_automaticTooltipsEnabled && target.hasAttribute(AUTOMATIC_TERM_ATTRIBUTE)) return;
   setHoveredVirtualMatch(null);
   const isNested = !!target.closest('.lia-mathpath-tooltip');
   const term = target.getAttribute('data-lia-term') || target.textContent || '';
@@ -677,10 +681,12 @@ function bindElement(el: Element): void {
   el.dataset.liaMathpathBound = '1';
 
   el.addEventListener('mouseenter', function () {
+    if (!_automaticTooltipsEnabled && el.hasAttribute(AUTOMATIC_TERM_ATTRIBUTE)) return;
     showForTarget(el);
   });
 
   el.addEventListener('pointerdown', function (ev) {
+    if (!_automaticTooltipsEnabled && el.hasAttribute(AUTOMATIC_TERM_ATTRIBUTE)) return;
     ev.preventDefault();
     _tooltipPinned = true;
     _pinnedTarget = el;
@@ -689,6 +695,7 @@ function bindElement(el: Element): void {
   });
 
   el.addEventListener('mouseleave', function (ev) {
+    if (!_automaticTooltipsEnabled && el.hasAttribute(AUTOMATIC_TERM_ATTRIBUTE)) return;
     const nextTarget = ev.relatedTarget as Node | null;
     if (nextTarget && isInsideTooltip(nextTarget)) return;
     if (_tooltipPinned) return;
@@ -696,6 +703,7 @@ function bindElement(el: Element): void {
   });
 
   el.addEventListener('click', function () {
+    if (!_automaticTooltipsEnabled && el.hasAttribute(AUTOMATIC_TERM_ATTRIBUTE)) return;
     _tooltipPinned = true;
     _pinnedTarget = el;
     _pinnedVirtualMatch = null;
@@ -910,6 +918,12 @@ function renderVirtualOverlay(): void {
 
 function updateVirtualPainting(): void {
   const registry = getHighlightRegistry();
+  if (!_automaticTooltipsEnabled) {
+    registry?.delete(VIRTUAL_HIGHLIGHT_NAME);
+    registry?.delete(VIRTUAL_HOVER_HIGHLIGHT_NAME);
+    removeVirtualOverlay();
+    return;
+  }
   const liveMatches = _virtualMatches.filter(isVirtualMatchLive);
 
   if (registry) {
@@ -1127,6 +1141,7 @@ function findVirtualMatchAtPoint(
 }
 
 function showForVirtualMatch(match: VirtualGlossaryMatch, rect?: DOMRect): void {
+  if (!_automaticTooltipsEnabled) return;
   const targetRect = rect || getVirtualMatchRect(match);
   if (!targetRect) return;
   setHoveredVirtualMatch(match);
@@ -1142,6 +1157,7 @@ function activateSemanticTermsInScope(scope: Node): void {
     const entry = getGlossaryEntryForText((element.textContent || '').trim());
     if (!entry) continue;
 
+    element.setAttribute(AUTOMATIC_TERM_ATTRIBUTE, 'semantic');
     element.setAttribute('data-lia-term', entry.term);
     element.classList.add('lia-mathpath-glossary-highlight');
     bindElement(element);
@@ -1167,6 +1183,7 @@ function highlightTermsInNode(node: Node, matcher: PreparedGlossaryMatcher): boo
 
     const highlightSpan = document.createElement('span');
     highlightSpan.className = 'lia-mathpath-glossary-highlight';
+    highlightSpan.setAttribute(AUTOMATIC_TERM_ATTRIBUTE, 'wrapper');
     highlightSpan.setAttribute('data-lia-term', current.term);
     highlightSpan.textContent = current.text;
     fragments.push(highlightSpan);
@@ -1189,6 +1206,10 @@ function highlightTermsInNode(node: Node, matcher: PreparedGlossaryMatcher): boo
 
 function highlightGlossaryTermsInScope(scope: Node = document.body): void {
   bindInScope(scope);
+  if (!_automaticTooltipsEnabled) {
+    rebuildVirtualGlossaryMatches(null);
+    return;
+  }
   activateSemanticTermsInScope(scope);
 
   const matcher = prepareGlossaryMatcher(getGlossaryMatchForms());
@@ -1214,6 +1235,30 @@ function highlightGlossaryTermsInScope(scope: Node = document.body): void {
 
 export function highlightGlossaryTerms(scope: Node = document.body): void {
   highlightGlossaryTermsInScope(scope);
+}
+
+export function setAutomaticTooltips(mode: string): boolean {
+  const enabled = String(mode || '').trim().toLowerCase() !== 'off';
+  if (enabled === _automaticTooltipsEnabled) return enabled;
+
+  _automaticTooltipsEnabled = enabled;
+  if (enabled) {
+    document.documentElement.removeAttribute(TOOLTIP_MODE_ATTRIBUTE);
+    if (document.body) highlightGlossaryTermsInScope(document.body);
+    return true;
+  }
+
+  document.documentElement.setAttribute(TOOLTIP_MODE_ATTRIBUTE, 'off');
+  hideTooltip();
+  hideTooltip(true);
+  clearPinnedTooltip();
+  _lastVirtualPointerPoint = null;
+  rebuildVirtualGlossaryMatches(null);
+  return false;
+}
+
+export function automaticTooltipsEnabled(): boolean {
+  return _automaticTooltipsEnabled;
 }
 
 export function bindGlossaryInteractions(scope: ParentNode): void {
@@ -1268,7 +1313,10 @@ export function bindGlossaryInteractions(scope: ParentNode): void {
     if (!(target instanceof Element)) return;
 
     const clickedGlossaryTerm = target.closest('.lia-mathpath-glossary-highlight') as Element | null;
-    if (clickedGlossaryTerm && !isExcludedGlossaryContext(clickedGlossaryTerm)) {
+    const automaticTermIsDisabled = !!clickedGlossaryTerm &&
+      !_automaticTooltipsEnabled &&
+      clickedGlossaryTerm.hasAttribute(AUTOMATIC_TERM_ATTRIBUTE);
+    if (clickedGlossaryTerm && !automaticTermIsDisabled && !isExcludedGlossaryContext(clickedGlossaryTerm)) {
       _tooltipPinned = true;
       _pinnedTarget = clickedGlossaryTerm;
       _pinnedVirtualMatch = null;

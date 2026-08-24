@@ -660,6 +660,129 @@ test('automatically highlights unmanaged text', async () => {
   })
 })
 
+test('setTooltips off disables automatic terms while explicit terms remain interactive', async () => {
+  let hitTesting
+  await withMathPath(
+    [
+      '<p id="range">Ein Bruch bleibt als Elm-Text erhalten.</p>',
+      '<p><em id="semantic">Bruch</em></p>',
+      '<p id="wrapped">Ein Bruch wird automatisch markiert.</p>',
+      '<span id="manual" data-lia-term="Bruch">manueller Begriff</span>'
+    ].join(''),
+    ({ window, document, api }) => {
+      const rangeParagraph = markElmOwned(document.querySelector('#range'))
+      const rangeText = rangeParagraph.firstChild
+      const semantic = document.querySelector('#semantic')
+      const manual = document.querySelector('#manual')
+
+      api.setGlossary([entry('Bruch', [], 'Ein Teil eines Ganzen.')])
+
+      const wrapper = document.querySelector('#wrapped [data-lia-mathpath-auto-term="wrapper"]')
+      assert.ok(wrapper)
+      assert.equal(semantic.dataset.liaMathpathAutoTerm, 'semantic')
+      assert.equal(manual.hasAttribute('data-lia-mathpath-auto-term'), false)
+      assert.equal(hitTesting.highlightRegistry?.size, 1)
+
+      semantic.dispatchEvent(new window.MouseEvent('mouseenter'))
+      const tooltip = document.querySelector('.lia-mathpath-tooltip')
+      assert.equal(tooltip?.dataset.open, '1')
+
+      assert.equal(api.setTooltips(' OFF '), false)
+      assert.equal(api.tooltipsEnabled(), false)
+      assert.equal(document.documentElement.dataset.liaMathpathTooltips, 'off')
+      assert.equal(tooltip?.dataset.open, '0')
+      assert.equal(tooltip?.textContent, '')
+      assert.equal(hitTesting.highlightRegistry?.size, 0)
+      assert.equal(document.querySelector('.lia-mathpath-range-layer'), null)
+
+      semantic.dispatchEvent(new window.MouseEvent('mouseenter'))
+      const pointerdown = dispatchPointer(window, semantic, 'pointerdown')
+      semantic.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }))
+      assert.equal(pointerdown.defaultPrevented, false)
+      assert.equal(tooltip?.dataset.open, '0')
+
+      wrapper.dispatchEvent(new window.MouseEvent('mouseenter'))
+      wrapper.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }))
+      assert.equal(tooltip?.dataset.open, '0')
+
+      hitTesting.setCaret(rangeText, 6)
+      dispatchPointer(window, rangeParagraph, 'pointermove')
+      dispatchPointer(window, rangeParagraph, 'click')
+      assert.equal(tooltip?.dataset.open, '0')
+
+      manual.dispatchEvent(new window.MouseEvent('mouseenter'))
+      assert.equal(tooltip?.dataset.open, '1')
+      assert.equal(tooltip?.querySelector('.lia-mathpath-tooltip-title')?.textContent, 'Bruch')
+      manual.dispatchEvent(new window.MouseEvent('mouseleave'))
+      assert.equal(tooltip?.dataset.open, '0')
+      assert.strictEqual(rangeParagraph.firstChild, rangeText)
+    },
+    {
+      beforeEval(window) {
+        hitTesting = installRangeHitTesting(window)
+      }
+    }
+  )
+})
+
+test('setTooltips on catches up content added while automatic tooltips were off', async () => {
+  let hitTesting
+  await withMathPath('<p id="existing">Ein Bruch ist schon vorhanden.</p>', async ({ window, document, api }) => {
+    api.setGlossary([entry('Bruch')])
+    const existingWrapper = document.querySelector('#existing [data-lia-mathpath-auto-term="wrapper"]')
+    assert.ok(existingWrapper)
+
+    assert.equal(api.setTooltips('off'), false)
+
+    const unmanaged = document.createElement('p')
+    unmanaged.id = 'added-unmanaged'
+    unmanaged.textContent = 'Ein Bruch kam spaeter hinzu.'
+    const elmParagraph = markElmOwned(document.createElement('p'))
+    elmParagraph.id = 'added-elm'
+    elmParagraph.textContent = 'Auch dieser Bruch kam spaeter hinzu.'
+    const elmText = elmParagraph.firstChild
+    document.body.append(unmanaged, elmParagraph)
+    await flushDomWork()
+    api.setGlossary([entry('Bruch')])
+    await flushDomWork()
+
+    assert.equal(unmanaged.querySelector('[data-lia-mathpath-auto-term]'), null)
+    assert.strictEqual(elmParagraph.firstChild, elmText)
+    assert.equal(hitTesting.highlightRegistry?.size, 0)
+
+    hitTesting.setCaret(elmText, 12)
+    dispatchPointer(window, elmParagraph, 'pointermove')
+    assert.notEqual(document.querySelector('.lia-mathpath-tooltip')?.dataset.open, '1')
+
+    assert.equal(api.setTooltips('@0'), true, 'an unbound macro parameter fails open')
+    assert.equal(api.tooltipsEnabled(), true)
+    assert.equal(document.documentElement.hasAttribute('data-lia-mathpath-tooltips'), false)
+    assert.strictEqual(document.querySelector('#existing [data-lia-mathpath-auto-term="wrapper"]'), existingWrapper)
+    assert.equal(unmanaged.querySelectorAll('[data-lia-mathpath-auto-term="wrapper"]').length, 1)
+    assert.strictEqual(elmParagraph.firstChild, elmText)
+    assert.equal(hitTesting.highlightRegistry?.size, 1)
+
+    const wrapperCount = document.querySelectorAll('[data-lia-mathpath-auto-term="wrapper"]').length
+    assert.equal(api.setTooltips('off'), false)
+    assert.equal(api.setTooltips('on'), true)
+    assert.equal(api.setTooltips('on'), true)
+    assert.equal(document.querySelectorAll('[data-lia-mathpath-auto-term="wrapper"]').length, wrapperCount)
+    assert.equal(document.querySelectorAll(
+      '.lia-mathpath-glossary-highlight .lia-mathpath-glossary-highlight'
+    ).length, 0)
+
+    hitTesting.clearCaret()
+    const addedWrapper = unmanaged.querySelector('[data-lia-mathpath-auto-term="wrapper"]')
+    addedWrapper.dispatchEvent(new window.MouseEvent('mouseenter'))
+    assert.equal(document.querySelector('.lia-mathpath-tooltip')?.dataset.open, '1')
+  }, {
+    realObserver: true,
+    beforeEval(window) {
+      hitTesting = installRangeHitTesting(window)
+    }
+  })
+})
+
 test('binds explicit data-lia-term and opens the canonical tooltip on hover and click', async () => {
   await withMathPath('<span data-lia-term="Brüche">Brüche</span>', ({ window, document, api }) => {
     const term = document.querySelector('[data-lia-term]')

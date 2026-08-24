@@ -84,20 +84,28 @@ test('README forwards the optional @Explain argument to the custom element', () 
   )
 })
 
+test('README defines the tooltip macro as an invisible idempotent API call', () => {
+  assert.match(
+    readmeSource,
+    /^@tooltip: <script modify="false">void window\.__LIA_MATHPATH__\.setTooltips\("@'0"\)<\/script>$/m
+  )
+})
+
 test('README uses a local DevServer-compatible bundle URL without a query string', () => {
   assert.match(readmeSource, /^script:\s+\.\/dist\/index\.js$/m)
   assert.doesNotMatch(readmeSource, /^script:.*\?/m)
 })
 
-test('README places one live @Explain(Tutorial) on its first slide', () => {
+test('README places one plain live @Explain(Tutorial) on its first slide', () => {
   const firstSlide = readmeSource.split(/\r?\n# Glossarbegriffe sicher verwenden/)[0]
-  const liveCalls = firstSlide.match(/<h2>\s*@Explain\(Tutorial\)\s*<\/h2>/g) || []
+  const liveCalls = firstSlide.match(/^@Explain\(Tutorial\)$/gm) || []
 
   assert.equal(liveCalls.length, 1)
   assert.match(
     firstSlide,
-    /\*\*Live-Test: manuell und außerhalb eines Hints\*\*\r?\n\r?\n<h2>\s*@Explain\(Tutorial\)\s*<\/h2>/
+    /\*\*Live-Test: manuell und außerhalb eines Hints\*\*\r?\n\r?\n@Explain\(Tutorial\)/
   )
+  assert.doesNotMatch(firstSlide, /<h[1-6]>\s*@Explain\(Tutorial\)\s*<\/h[1-6]>/)
   assert.doesNotMatch(firstSlide, /\[\[\?\]\].*@Explain\(Tutorial\)/)
 })
 

@@ -26,6 +26,8 @@ declare global {
       setGlossary: (entries: GlossaryEntry[]) => number;
       loadGlossaryMarkdown: (markdown: string) => number;
       getGlossary: (term: string) => GlossaryEntry | null;
+      setTooltips: (mode: string) => boolean;
+      tooltipsEnabled: () => boolean;
       recordWrongAttempt: (taskId: string, tags?: string[]) => number;
       generateLearningToken: (studentId?: string) => string;
       exportState: () => unknown;

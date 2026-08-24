@@ -1,6 +1,6 @@
 <!--
 author:   MINT-the-GAP; Martin Lommatzsch
-version:  0.0.4
+version:  0.0.6
 language: de
 edit:     true
 comment:  LiaScript plugin for reusable math path components.
@@ -8,6 +8,8 @@ script:   ./dist/index.js
 
 
 @Explain: <lia-mathpath-explain data-lia-explain-topic="@0"></lia-mathpath-explain>
+
+@tooltip: <script modify="false">void window.__LIA_MATHPATH__.setTooltips("@'0")</script>
 
 -->
 
@@ -35,12 +37,12 @@ https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-G
 
 **Live-Test: manuell und außerhalb eines Hints**
 
-<h2> @Explain(Tutorial) </h2>
+@Explain(Tutorial)
 
 
 
-Für ein manuell gesetztes Explain-Thema reicht der direkte MathPath-Import im
-einzigen LiaScript-Hauptkopf:
+Für ein manuell gesetztes Explain-Thema muss MathPath direkt im einzigen
+LiaScript-Hauptkopf des verwendenden Kurses importiert werden:
 
 ```markdown
 import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md
@@ -55,7 +57,10 @@ import: https://raw.githubusercontent.com/MINT-the-GAP/Aufgabensammlung/main/imp
 import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md
 ```
 
-Nach dem MathPath-Import steht das Makro `@Explain` im Kurs zur Verfügung.
+Nach dem MathPath-Import stehen die Makros `@Explain` und `@tooltip` im Kurs zur Verfügung.
+Ein Import eines anderen Templates, das seinerseits MathPath einbindet, reicht
+nicht zuverlässig aus. Bleibt `@Explain(...)` als Text sichtbar, fehlt im
+verwendenden Kurs fast immer dieser direkte Import.
 
 
 # Glossarbegriffe sicher verwenden
@@ -185,3 +190,38 @@ Hier bleibt <em>Bruch</em> ohne Hervorhebung und Tooltip.
 Hier bleibt <em>Bruch</em> ohne Hervorhebung und Tooltip.
 </div>
 ```
+
+
+# Automatische Tooltips ausschalten
+
+Mit `@tooltip(off)` werden alle automatisch erkannten Glossarbegriffe ab dieser
+Kursposition weder hervorgehoben noch als Tooltip geöffnet. Bereits erkannte
+Begriffe werden sofort deaktiviert, und später gerenderte Inhalte bleiben ebenfalls
+ohne automatische Tooltips. Manuell gesetzte Elemente mit `data-lia-term` sowie
+`@Explain` funktionieren weiterhin.
+
+```markdown
+@tooltip(off)
+```
+
+Das Makro wird beim Rendern einer Folie erneut ausgewertet. Der Zustand bleibt
+erhalten, bis `@tooltip(on)` ausgeführt wird.
+
+@tooltip(off)
+
+In diesem Live-Beispiel bleibt der automatisch erkannte
+<em data-tooltip-probe="automatic">Bruch</em> ohne Tooltip. Der
+<span data-tooltip-probe="manual" data-lia-term="Bruch">manuell gesetzte Begriff</span>
+bleibt dagegen aktiv.
+
+
+# Automatische Tooltips wieder einschalten
+
+```markdown
+@tooltip(on)
+```
+
+@tooltip(on)
+
+Hier ist der automatisch erkannte
+<em data-tooltip-probe="automatic">Bruch</em> wieder aktiv.

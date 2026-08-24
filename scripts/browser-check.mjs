@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url'
 
 const DEFAULT_URL =
   'https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md'
+const IMPORT_CONSUMER_URL =
+  'https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/test/fixtures/import-consumer.md'
 const DEFAULT_TIMEOUT_MS = 45_000
 const TUTORIAL_URL =
   'https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/Aufgabensammlung/refs/heads/main/Repetitorium/Erklaerungen/00_00_00_Tutorial.md'
@@ -25,6 +27,8 @@ const PLAIN_TERM = {
   canonical: 'Division',
   fixtureText: 'Die Division ist hier absichtlich normal und nicht kursiv geschrieben.'
 }
+const TOOLTIP_OFF_HEADING = 'Automatische Tooltips ausschalten'
+const TOOLTIP_ON_HEADING = 'Automatische Tooltips wieder einschalten'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 const repositoryRoot = path.resolve(scriptDirectory, '..')
@@ -109,7 +113,8 @@ function addCheck(name, ok, details = {}) {
 function parseArguments(argv) {
   const options = {
     remote: false,
-    url: DEFAULT_URL,
+    consumerImport: false,
+    url: null,
     chromePath: process.env.CHROME_PATH || null,
     timeoutMs: DEFAULT_TIMEOUT_MS
   }
@@ -118,6 +123,10 @@ function parseArguments(argv) {
     const argument = argv[index]
     if (argument === '--remote') {
       options.remote = true
+      continue
+    }
+    if (argument === '--consumer-import') {
+      options.consumerImport = true
       continue
     }
     if (argument === '--url' || argument === '--chrome' || argument === '--timeout-ms') {
@@ -146,6 +155,9 @@ function parseArguments(argv) {
 
   if (!Number.isFinite(options.timeoutMs) || options.timeoutMs < 5_000) {
     throw new Error('--timeout-ms must be a number of at least 5000')
+  }
+  if (!options.url) {
+    options.url = options.consumerImport ? IMPORT_CONSUMER_URL : DEFAULT_URL
   }
   new URL(options.url)
   return options
@@ -458,18 +470,26 @@ function installDiagnosticHandlers(connection) {
   })
 }
 
-async function loadOverrideFiles() {
+async function loadOverrideFiles(includeImportConsumer = false) {
   const definitions = [
     ['README.md', path.join(repositoryRoot, 'README.md'), 'text/markdown; charset=utf-8'],
     ['dist/index.js', path.join(repositoryRoot, 'dist', 'index.js'), 'application/javascript; charset=utf-8'],
     ['Glossar.md', path.join(repositoryRoot, 'Glossar.md'), 'text/markdown; charset=utf-8'],
     ['Explain.md', path.join(repositoryRoot, 'Explain.md'), 'text/markdown; charset=utf-8']
   ]
+  if (includeImportConsumer) {
+    definitions.push([
+      'import-consumer.md',
+      path.join(repositoryRoot, 'test', 'fixtures', 'import-consumer.md'),
+      'text/markdown; charset=utf-8'
+    ])
+  }
   const overrides = new Map()
 
   for (const [name, filename, contentType] of definitions) {
     const body = await readFile(filename)
     overrides.set(name, { name, filename, contentType, body })
+    result.overrides.served[name] ??= 0
     result.overrides.files[name] = { path: filename, bytes: body.byteLength }
   }
   return overrides
@@ -491,6 +511,7 @@ function overrideNameForUrl(requestUrl) {
   }
   const lower = pathname.toLowerCase()
   if (!lower.includes('/mint-the-gap/lia-mathpath')) return null
+  if (/\/test\/fixtures\/import-consumer\.md$/i.test(pathname)) return 'import-consumer.md'
   if (/\/readme\.md$/i.test(pathname)) return 'README.md'
   if (/\/dist\/index\.js$/i.test(pathname)) return 'dist/index.js'
   if (/\/glossar\.md$/i.test(pathname)) return 'Glossar.md'
@@ -689,6 +710,7 @@ function inspectManualExplainInPage() {
   const headings = Array.from(document.querySelectorAll('h1, h2, h3'))
     .filter(isRendered)
     .map(element => normalize(element.textContent))
+  const visibleText = normalize(document.body?.innerText)
 
   return {
     href: location.href,
@@ -703,7 +725,123 @@ function inspectManualExplainInPage() {
     linkText: link ? normalize(link.textContent) : null,
     itemText: link ? normalize(link.closest('li')?.textContent) : null,
     linkHref: link?.getAttribute('data-lia-explain-href') || link?.getAttribute('href') || null,
+    literalMacroVisible: visibleText.includes('@Explain(Tutorial)'),
     hostCount: hosts.length
+  }
+}
+
+function inspectTooltipMacroSlideInPage(expectedHeading) {
+  const normalize = value => String(value || '').replace(/\s+/g, ' ').trim()
+  const isRendered = element => {
+    if (!(element instanceof Element)) return false
+    const style = getComputedStyle(element)
+    if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') return false
+    if (Number(style.opacity) === 0) return false
+    return element.getClientRects().length > 0
+  }
+  const describe = element => {
+    if (!element) return null
+    const style = getComputedStyle(element)
+    return {
+      tagName: element.tagName,
+      text: normalize(element.textContent),
+      dataTerm: element.getAttribute('data-lia-term'),
+      automaticMarker: element.getAttribute('data-lia-mathpath-auto-term'),
+      bound: element.getAttribute('data-lia-mathpath-bound'),
+      classes: Array.from(element.classList),
+      backgroundColor: style.backgroundColor,
+      boxShadow: style.boxShadow,
+      cursor: style.cursor
+    }
+  }
+
+  const headings = Array.from(document.querySelectorAll('h1, h2, h3'))
+    .filter(isRendered)
+    .map(element => normalize(element.textContent))
+  const probes = Array.from(document.querySelectorAll('[data-tooltip-probe]')).filter(isRendered)
+  const automatic = probes.find(element =>
+    element.getAttribute('data-tooltip-probe') === 'automatic'
+  ) || null
+  const manual = probes.find(element =>
+    element.getAttribute('data-tooltip-probe') === 'manual'
+  ) || null
+
+  const literalMacroTexts = []
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+  let node
+  while ((node = walker.nextNode()) !== null) {
+    const parent = node.parentElement
+    if (!parent || parent.closest(
+      'pre, code, script, style, textarea, .lia-code, .lia-code-wrapper, .ace_editor, .ace_content, .ace_line, .ace_text-layer'
+    )) continue
+    if (!isRendered(parent)) continue
+    const text = normalize(node.data)
+    if (/@tooltip\s*\(\s*(?:off|on)\s*\)/i.test(text)) literalMacroTexts.push(text)
+  }
+
+  const api = window.__LIA_MATHPATH__
+  let apiEnabled = null
+  try {
+    apiEnabled = typeof api?.tooltipsEnabled === 'function'
+      ? api.tooltipsEnabled()
+      : null
+  } catch {
+    apiEnabled = null
+  }
+
+  const registry = globalThis.CSS?.highlights
+  const registryHas = name => Boolean(
+    registry && typeof registry.has === 'function' && registry.has(name)
+  )
+
+  return {
+    href: location.href,
+    hash: location.hash,
+    headings,
+    found: headings.includes(expectedHeading) && Boolean(automatic),
+    fingerprint: `${location.hash}|${headings.join('|')}|${normalize(document.body?.innerText).slice(0, 240)}`,
+    apiEnabled,
+    rootMode: document.documentElement.getAttribute('data-lia-mathpath-tooltips'),
+    automatic: describe(automatic),
+    manual: describe(manual),
+    literalMacroTexts,
+    glossaryRangeRegistered: registryHas('lia-mathpath-glossary'),
+    hoverRangeRegistered: registryHas('lia-mathpath-glossary-hover'),
+    rangeLayerCount: document.querySelectorAll('.lia-mathpath-range-layer').length,
+    openTooltipCount: document.querySelectorAll('.lia-mathpath-tooltip[data-open="1"]').length
+  }
+}
+
+function locateTooltipProbeInPage(kind) {
+  const normalize = value => String(value || '').replace(/\s+/g, ' ').trim()
+  const isRendered = element => {
+    if (!(element instanceof Element)) return false
+    const style = getComputedStyle(element)
+    return style.display !== 'none' && style.visibility !== 'hidden' &&
+      style.visibility !== 'collapse' && Number(style.opacity) !== 0 &&
+      element.getClientRects().length > 0
+  }
+  const element = Array.from(document.querySelectorAll('[data-tooltip-probe]')).find(candidate =>
+    isRendered(candidate) && candidate.getAttribute('data-tooltip-probe') === kind
+  )
+  if (!element) return null
+
+  element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' })
+  const rect = element.getBoundingClientRect()
+  const x = Math.max(1, Math.min(innerWidth - 2, rect.left + rect.width / 2))
+  const y = Math.max(1, Math.min(innerHeight - 2, rect.top + rect.height / 2))
+  const hit = document.elementFromPoint(x, y)
+  return {
+    x,
+    y,
+    width: rect.width,
+    height: rect.height,
+    text: normalize(element.textContent),
+    dataTerm: element.getAttribute('data-lia-term'),
+    automaticMarker: element.getAttribute('data-lia-mathpath-auto-term'),
+    hitTarget: hit === element || element.contains(hit),
+    hitTag: hit?.tagName || null,
+    hitText: normalize(hit?.textContent)
   }
 }
 
@@ -905,6 +1043,12 @@ async function inspectManualExplain() {
   return evaluate(`(${inspectManualExplainInPage.toString()})()`)
 }
 
+async function inspectTooltipMacroSlide(expectedHeading) {
+  return evaluate(
+    `(${inspectTooltipMacroSlideInPage.toString()})(${JSON.stringify(expectedHeading)})`
+  )
+}
+
 function recordSlide(label, snapshot) {
   result.slidesVisited.push({
     label,
@@ -986,6 +1130,55 @@ async function navigateToManualExplain() {
   for (let step = 1; step <= 30; step += 1) {
     const previousFingerprint = snapshot.fingerprint
     snapshot = await manualExplainSnapshotAfterKey('ArrowRight', previousFingerprint)
+    if (snapshot.found) return snapshot
+    unchangedSteps = snapshot.fingerprint === previousFingerprint ? unchangedSteps + 1 : 0
+    if (unchangedSteps >= 2) break
+  }
+  return snapshot
+}
+
+async function tooltipMacroSnapshotAfterKey(key, previousFingerprint, expectedHeading, label) {
+  await pressKey(key)
+  let snapshot
+  try {
+    snapshot = await waitForValue(
+      () => inspectTooltipMacroSlide(expectedHeading),
+      value => Boolean(value?.found) || value?.fingerprint !== previousFingerprint,
+      2_500,
+      100
+    )
+  } catch (error) {
+    snapshot = error.lastValue || await inspectTooltipMacroSlide(expectedHeading)
+  }
+  await delay(250)
+  snapshot = await inspectTooltipMacroSlide(expectedHeading)
+  recordSlide(label, snapshot)
+  return snapshot
+}
+
+async function navigateToTooltipMacroSlide(expectedHeading) {
+  await evaluate('window.focus(); document.body?.focus(); true')
+  let snapshot = await inspectTooltipMacroSlide(expectedHeading)
+  recordSlide(`tooltip-${expectedHeading}-initial`, snapshot)
+  if (snapshot.found) return snapshot
+
+  snapshot = await tooltipMacroSnapshotAfterKey(
+    'Home',
+    snapshot.fingerprint,
+    expectedHeading,
+    `tooltip-${expectedHeading}-after-Home`
+  )
+  if (snapshot.found) return snapshot
+
+  let unchangedSteps = 0
+  for (let step = 1; step <= 40; step += 1) {
+    const previousFingerprint = snapshot.fingerprint
+    snapshot = await tooltipMacroSnapshotAfterKey(
+      'ArrowRight',
+      previousFingerprint,
+      expectedHeading,
+      `tooltip-${expectedHeading}-ArrowRight-${step}`
+    )
     if (snapshot.found) return snapshot
     unchangedSteps = snapshot.fingerprint === previousFingerprint ? unchangedSteps + 1 : 0
     if (unchangedSteps >= 2) break
@@ -1101,6 +1294,27 @@ async function clickMouse(x, y) {
 
 async function tooltipState(expectedTerm) {
   return evaluate(`(${inspectTooltipInPage.toString()})(${JSON.stringify(expectedTerm)})`)
+}
+
+async function tooltipProbePoint(kind) {
+  const expression = `(${locateTooltipProbeInPage.toString()})(${JSON.stringify(kind)})`
+  await evaluate(expression)
+  await delay(100)
+  return evaluate(expression)
+}
+
+async function checkInertTooltipProbe(kind) {
+  await moveMouse(2, 2)
+  await delay(100)
+  const point = await tooltipProbePoint(kind)
+  if (!point) throw new Error(`Could not locate ${kind} tooltip probe`)
+  if (!point.hitTarget) throw new Error(`${kind} tooltip probe is covered at its center point`)
+
+  await moveMouse(point.x, point.y)
+  await delay(500)
+  const tooltip = await tooltipState('Bruch')
+  await moveMouse(2, 2)
+  return { point, tooltip }
 }
 
 async function checkHover(displayText, expectedTerm, locatePoint = termPoint) {
@@ -1287,11 +1501,15 @@ async function cleanup() {
 
 async function run() {
   const options = parseArguments(process.argv.slice(2))
-  result.mode = options.remote ? 'remote' : 'local-overrides'
+  result.mode = options.remote
+    ? (options.consumerImport ? 'remote-consumer-import' : 'remote')
+    : (options.consumerImport ? 'consumer-import' : 'local-overrides')
   result.url = options.url
   result.overrides.enabled = !options.remote
 
-  const overrideFiles = options.remote ? new Map() : await loadOverrideFiles()
+  const overrideFiles = options.remote
+    ? new Map()
+    : await loadOverrideFiles(options.consumerImport)
   const chromePath = await findChrome(options.chromePath)
   result.environment.chromePath = chromePath
 
@@ -1369,51 +1587,50 @@ async function run() {
     })
   }
 
-  if (!options.remote) {
-    let manualExplain = null
-    try {
-      manualExplain = await navigateToManualExplain()
-      const rendersFreely = manualExplain.found &&
-        manualExplain.topic === 'Tutorial' &&
-        manualExplain.outsideHintContext === true &&
-        manualExplain.linkText === 'Tutorial' &&
-        manualExplain.itemText === TUTORIAL_TEXT &&
-        manualExplain.linkHref === TUTORIAL_URL
-      addCheck('@Explain(Tutorial) renders outside quiz and hint contexts', rendersFreely, {
-        expectedHref: TUTORIAL_URL,
-        expectedText: TUTORIAL_TEXT,
-        snapshot: manualExplain
-      })
+  let manualExplain = null
+  try {
+    manualExplain = await navigateToManualExplain()
+    const rendersFreely = manualExplain.found &&
+      manualExplain.topic === 'Tutorial' &&
+      manualExplain.outsideHintContext === true &&
+      manualExplain.linkText === 'Tutorial' &&
+      manualExplain.itemText === TUTORIAL_TEXT &&
+      manualExplain.linkHref === TUTORIAL_URL &&
+      manualExplain.literalMacroVisible === false
+    addCheck('@Explain(Tutorial) renders outside quiz and hint contexts', rendersFreely, {
+      expectedHref: TUTORIAL_URL,
+      expectedText: TUTORIAL_TEXT,
+      snapshot: manualExplain
+    })
 
-      if (rendersFreely) {
-        const overlay = await evaluate(`(${clickManualExplainInPage.toString()})()`)
-        const overlayWorks = overlay.clicked &&
-          overlay.open &&
-          overlay.bodyLocked &&
-          overlay.frameSrc === TUTORIAL_URL
-        addCheck('@Explain(Tutorial) opens the Tutorial course in the overlay', overlayWorks, {
-          expectedHref: TUTORIAL_URL,
-          overlay
-        })
-        await evaluate(
-          "document.querySelector('.lia-mathpath-explain-close')?.click(); true"
-        )
-      } else {
-        addCheck('@Explain(Tutorial) opens the Tutorial course in the overlay', false, {
-          skipped: true,
-          reason: 'The freely placed Tutorial link was not rendered correctly.'
-        })
-      }
-    } catch (error) {
-      addCheck('@Explain(Tutorial) renders outside quiz and hint contexts', false, {
-        error: errorDetails(error),
-        lastValue: error.lastValue || manualExplain
+    if (rendersFreely) {
+      const overlay = await evaluate(`(${clickManualExplainInPage.toString()})()`)
+      const overlayWorks = overlay.clicked &&
+        overlay.open &&
+        overlay.bodyLocked &&
+        overlay.frameSrc === TUTORIAL_URL
+      addCheck('@Explain(Tutorial) opens the Tutorial course in the overlay', overlayWorks, {
+        expectedHref: TUTORIAL_URL,
+        overlay
       })
+      await evaluate(
+        "document.querySelector('.lia-mathpath-explain-close')?.click(); true"
+      )
+    } else {
       addCheck('@Explain(Tutorial) opens the Tutorial course in the overlay', false, {
         skipped: true,
-        reason: 'The freely placed Tutorial link could not be reached.'
+        reason: 'The freely placed Tutorial link was not rendered correctly.'
       })
     }
+  } catch (error) {
+    addCheck('@Explain(Tutorial) renders outside quiz and hint contexts', false, {
+      error: errorDetails(error),
+      lastValue: error.lastValue || manualExplain
+    })
+    addCheck('@Explain(Tutorial) opens the Tutorial course in the overlay', false, {
+      skipped: true,
+      reason: 'The freely placed Tutorial link could not be reached.'
+    })
   }
 
   if (!options.remote) {
@@ -1571,6 +1788,124 @@ async function run() {
       skipped: true,
       reason: 'The visible README browser example was not reached.'
     })
+  }
+
+  if (!options.remote) {
+    let offSnapshot = null
+    try {
+      await moveMouse(2, 2)
+      offSnapshot = await navigateToTooltipMacroSlide(TOOLTIP_OFF_HEADING)
+      offSnapshot = await waitForValue(
+        () => inspectTooltipMacroSlide(TOOLTIP_OFF_HEADING),
+        value => value?.found &&
+          value.apiEnabled === false &&
+          value.rootMode === 'off' &&
+          value.glossaryRangeRegistered === false &&
+          value.hoverRangeRegistered === false &&
+          value.rangeLayerCount === 0 &&
+          value.openTooltipCount === 0,
+        8_000,
+        150
+      )
+      const offStateWorks = offSnapshot.found &&
+        offSnapshot.apiEnabled === false &&
+        offSnapshot.rootMode === 'off' &&
+        offSnapshot.glossaryRangeRegistered === false &&
+        offSnapshot.hoverRangeRegistered === false &&
+        offSnapshot.rangeLayerCount === 0 &&
+        offSnapshot.openTooltipCount === 0 &&
+        offSnapshot.automatic?.text === 'Bruch' &&
+        ['rgba(0, 0, 0, 0)', 'transparent'].includes(offSnapshot.automatic?.backgroundColor) &&
+        offSnapshot.automatic?.boxShadow === 'none' &&
+        offSnapshot.manual?.dataTerm === 'Bruch'
+      addCheck('@tooltip(off) disables automatic tooltip state and painting', offStateWorks, {
+        heading: TOOLTIP_OFF_HEADING,
+        snapshot: offSnapshot
+      })
+      addCheck(
+        '@tooltip(off) is not visible as non-code text',
+        offSnapshot.literalMacroTexts.length === 0,
+        { literalMacroTexts: offSnapshot.literalMacroTexts }
+      )
+    } catch (error) {
+      offSnapshot = error.lastValue || offSnapshot
+      addCheck('@tooltip(off) disables automatic tooltip state and painting', false, {
+        error: errorDetails(error),
+        lastValue: offSnapshot
+      })
+      addCheck('@tooltip(off) is not visible as non-code text', false, {
+        skipped: true,
+        reason: 'The tooltip-off slide did not become ready.'
+      })
+    }
+
+    try {
+      if (!offSnapshot?.found) throw new Error('The tooltip-off slide was not reached.')
+      const inert = await checkInertTooltipProbe('automatic')
+      const remainsInert = inert.tooltip?.open === false && inert.tooltip?.openCount === 0
+      addCheck('Real hover keeps the automatic tooltip probe inert while off', remainsInert, inert)
+    } catch (error) {
+      addCheck('Real hover keeps the automatic tooltip probe inert while off', false, {
+        error: errorDetails(error),
+        lastValue: error.lastValue || null
+      })
+    }
+
+    try {
+      if (!offSnapshot?.found) throw new Error('The tooltip-off slide was not reached.')
+      const hover = await checkHover('Bruch', 'Bruch', () => tooltipProbePoint('manual'))
+      addCheck('Manual data-lia-term remains interactive while automatic tooltips are off', true, hover)
+    } catch (error) {
+      addCheck('Manual data-lia-term remains interactive while automatic tooltips are off', false, {
+        error: errorDetails(error),
+        lastValue: error.lastValue || null
+      })
+    }
+
+    let onSnapshot = null
+    try {
+      onSnapshot = await navigateToTooltipMacroSlide(TOOLTIP_ON_HEADING)
+      onSnapshot = await waitForValue(
+        () => inspectTooltipMacroSlide(TOOLTIP_ON_HEADING),
+        value => value?.found && value.apiEnabled === true && value.rootMode === null,
+        8_000,
+        150
+      )
+      const onStateWorks = onSnapshot.found &&
+        onSnapshot.apiEnabled === true &&
+        onSnapshot.rootMode === null &&
+        onSnapshot.automatic?.text === 'Bruch'
+      addCheck('@tooltip(on) restores automatic tooltip state', onStateWorks, {
+        heading: TOOLTIP_ON_HEADING,
+        snapshot: onSnapshot
+      })
+      addCheck(
+        '@tooltip(on) is not visible as non-code text',
+        onSnapshot.literalMacroTexts.length === 0,
+        { literalMacroTexts: onSnapshot.literalMacroTexts }
+      )
+    } catch (error) {
+      onSnapshot = error.lastValue || onSnapshot
+      addCheck('@tooltip(on) restores automatic tooltip state', false, {
+        error: errorDetails(error),
+        lastValue: onSnapshot
+      })
+      addCheck('@tooltip(on) is not visible as non-code text', false, {
+        skipped: true,
+        reason: 'The tooltip-on slide did not become ready.'
+      })
+    }
+
+    try {
+      if (!onSnapshot?.found) throw new Error('The tooltip-on slide was not reached.')
+      const hover = await checkHover('Bruch', 'Bruch', () => tooltipProbePoint('automatic'))
+      addCheck('Real hover opens Bruch for the automatic tooltip probe while on', true, hover)
+    } catch (error) {
+      addCheck('Real hover opens Bruch for the automatic tooltip probe while on', false, {
+        error: errorDetails(error),
+        lastValue: error.lastValue || null
+      })
+    }
   }
 
   await delay(500)

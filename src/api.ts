@@ -11,6 +11,7 @@ import {
   setGlossaryEntries
 } from './store';
 import type { GlossaryEntry } from './types';
+import { automaticTooltipsEnabled, setAutomaticTooltips } from './ui';
 
 export function autoDiscoverGlossary(): number {
   // Suche nach Glossar-Tabellen in der Seite
@@ -152,6 +153,14 @@ export function registerGlobalApi(): void {
 
     getGlossary(term: string): GlossaryEntry | null {
       return getGlossaryEntry(term);
+    },
+
+    setTooltips(mode: string): boolean {
+      return setAutomaticTooltips(mode);
+    },
+
+    tooltipsEnabled(): boolean {
+      return automaticTooltipsEnabled();
     },
 
     recordWrongAttempt(taskId: string, tags: string[] = []): number {
