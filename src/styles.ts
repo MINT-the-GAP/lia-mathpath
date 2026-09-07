@@ -1,7 +1,5 @@
 // Runtime CSS for glossary hover/click interactions.
 
-import 'katex/dist/katex.min.css';
-
 const CSS_ID = 'lia-mathpath-style-v1';
 const ACCENT_VAR = '--lia-mathpath-accent-rgb';
 const ACCENT_CONTRAST_VAR = '--lia-mathpath-accent-contrast-rgb';

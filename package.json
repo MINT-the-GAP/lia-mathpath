@@ -1,6 +1,6 @@
 {
   "name": "lia-mathpath",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "LiaScript plugin for reusable math path components",
   "scripts": {
     "build": "parcel build src/index.ts --dist-dir dist --no-scope-hoist",
