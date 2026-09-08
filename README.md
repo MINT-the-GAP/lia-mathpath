@@ -172,6 +172,10 @@ Das ist nützlich für sensible Lösungsbereiche, Antwortfelder oder Texte, die 
 ohne Hilfen dargestellt werden sollen. Das gilt auch für kursive Volltreffer und
 manuelle `[data-lia-term]`-Elemente.
 
+Das Inhaltsverzeichnis (TOC) bleibt grundsätzlich ohne Glossar-Highlights und
+MathPath-Tooltips. Das gilt auch mit `lia-navigation`, nach dem Neuaufbau des TOC
+und nach `@tooltip(on)`, einschließlich manuell markierter Begriffe im TOC.
+
 ## Sichtbares Testbeispiel
 
 Ein *Bruch* besitzt einen *Zähler* und einen *Nenner*. Mehrere *Brüche* verwenden dieselbe

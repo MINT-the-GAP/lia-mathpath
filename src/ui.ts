@@ -18,6 +18,7 @@ import type { GlossaryMatchForm } from './store';
 
 let _tooltip: HTMLDivElement | null = null;
 let _nestedTooltip: HTMLDivElement | null = null;
+let _tooltipTarget: Element | null = null;
 let _pinnedTarget: Element | null = null;
 let _pinnedVirtualMatch: VirtualGlossaryMatch | null = null;
 let _tooltipPinned = false;
@@ -68,6 +69,9 @@ const CODE_CONTEXT_SELECTOR = [
 const EXCLUDED_CONTEXT_SELECTOR = [
   Array.from(EXCLUDED_TAGS).map(tag => tag.toLowerCase()).join(', '),
   CODE_CONTEXT_SELECTOR,
+  // Exclude native entries and lia-navigation's TOC, including rebuilt or relocated containers.
+  '.lia-toc',
+  '#lia-bm-toc5',
   'div.notip',
   '.katex',
   '.katex-display',
@@ -579,6 +583,7 @@ function ensureTooltip(isNested = false): HTMLDivElement {
 }
 
 function hideTooltip(isNested = false): void {
+  if (!isNested) _tooltipTarget = null;
   const tip = isNested ? _nestedTooltip : _tooltip;
   if (!tip || !tip.isConnected) return;
   tip.setAttribute('data-open', '0');
@@ -645,6 +650,7 @@ function showEntryAtRect(term: string, targetRect: DOMRect, isNested = false): v
   const entry = getGlossaryEntry(term);
   if (!entry) return;
 
+  if (!isNested) _tooltipTarget = null;
   const tip = ensureTooltip(isNested);
   const related = entry.links.length ? `\n${entry.links.join(' | ')}` : '';
   const title = `<div class="lia-mathpath-tooltip-title"><span class="lia-mathpath-glossary-highlight lia-mathpath-term" data-lia-term="${escapeHtml(entry.term)}">${escapeHtml(entry.term)}</span></div>`;
@@ -661,6 +667,7 @@ function showForTarget(target: Element): void {
   const isNested = !!target.closest('.lia-mathpath-tooltip');
   const term = target.getAttribute('data-lia-term') || target.textContent || '';
   showEntryAtRect(term, target.getBoundingClientRect(), isNested);
+  if (!isNested) _tooltipTarget = target;
 }
 
 function bindElement(el: Element): void {
@@ -681,11 +688,13 @@ function bindElement(el: Element): void {
   el.dataset.liaMathpathBound = '1';
 
   el.addEventListener('mouseenter', function () {
+    if (isExcludedGlossaryContext(el)) return;
     if (!_automaticTooltipsEnabled && el.hasAttribute(AUTOMATIC_TERM_ATTRIBUTE)) return;
     showForTarget(el);
   });
 
   el.addEventListener('pointerdown', function (ev) {
+    if (isExcludedGlossaryContext(el)) return;
     if (!_automaticTooltipsEnabled && el.hasAttribute(AUTOMATIC_TERM_ATTRIBUTE)) return;
     ev.preventDefault();
     _tooltipPinned = true;
@@ -695,6 +704,7 @@ function bindElement(el: Element): void {
   });
 
   el.addEventListener('mouseleave', function (ev) {
+    if (isExcludedGlossaryContext(el)) return;
     if (!_automaticTooltipsEnabled && el.hasAttribute(AUTOMATIC_TERM_ATTRIBUTE)) return;
     const nextTarget = ev.relatedTarget as Node | null;
     if (nextTarget && isInsideTooltip(nextTarget)) return;
@@ -703,6 +713,7 @@ function bindElement(el: Element): void {
   });
 
   el.addEventListener('click', function () {
+    if (isExcludedGlossaryContext(el)) return;
     if (!_automaticTooltipsEnabled && el.hasAttribute(AUTOMATIC_TERM_ATTRIBUTE)) return;
     _tooltipPinned = true;
     _pinnedTarget = el;
@@ -980,6 +991,14 @@ function authoredElementFromPoint(clientX: number, clientY: number): Element | n
 function refreshGlossaryLayout(): void {
   scheduleVirtualPainting();
 
+  // A navigation rebuild can move an already active term into an excluded container.
+  if (_tooltipTarget && (!_tooltipTarget.isConnected || isExcludedGlossaryContext(_tooltipTarget))) {
+    hideTooltip();
+    hideTooltip(true);
+    clearPinnedTooltip();
+    return;
+  }
+
   if (_pinnedVirtualMatch) {
     const rect = getVirtualMatchRect(_pinnedVirtualMatch);
     if (!rect) {
@@ -1008,7 +1027,7 @@ function refreshGlossaryLayout(): void {
   }
 
   if (!_pinnedTarget) return;
-  if (!_pinnedTarget.isConnected) {
+  if (!_pinnedTarget.isConnected || isExcludedGlossaryContext(_pinnedTarget)) {
     hideTooltip();
     clearPinnedTooltip();
     return;
@@ -1286,7 +1305,8 @@ export function bindGlossaryInteractions(scope: ParentNode): void {
     const target = ev.target;
     if (target instanceof Element && target.closest('.lia-mathpath-tooltip')) return;
     _lastVirtualPointerPoint = { clientX: ev.clientX, clientY: ev.clientY };
-    if (target instanceof Element && target.closest('.lia-mathpath-glossary-highlight')) {
+    if (target instanceof Element && !isExcludedGlossaryContext(target) &&
+        target.closest('.lia-mathpath-glossary-highlight')) {
       setHoveredVirtualMatch(null);
       return;
     }
@@ -1406,7 +1426,7 @@ export function observeDynamicContent(): void {
       }
 
       if (rec.type === 'attributes') {
-        if (rec.attributeName === 'class' || rec.attributeName === 'data-lia-term') {
+        if (rec.attributeName === 'class' || rec.attributeName === 'id' || rec.attributeName === 'data-lia-term') {
           contentChanged = true;
         } else {
           layoutChanged = true;
@@ -1441,7 +1461,7 @@ export function observeDynamicContent(): void {
     subtree: true,
     attributes: true,
     characterData: true,
-    attributeFilter: ['class', 'data-lia-term', 'style', 'hidden', 'open', 'width', 'height']
+    attributeFilter: ['class', 'id', 'data-lia-term', 'style', 'hidden', 'open', 'width', 'height']
   });
 }
 

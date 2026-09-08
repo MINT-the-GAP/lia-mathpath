@@ -973,6 +973,176 @@ test('keeps notip, code, KaTeX, tooltip and SVG contents excluded', async () => 
   })
 })
 
+test('excludes native TOC ranges, emphasis and explicit terms while course text stays interactive', async () => {
+  let hitTesting
+  await withMathPath([
+    '<nav class="lia-toc">',
+    '  <p>Ein Bruch im Inhaltsverzeichnis.</p>',
+    '  <em>Bruch</em>',
+    '  <span data-lia-term="Bruch">Bruch</span>',
+    '</nav>',
+    '<main><p>Ein Bruch im Kurs.</p></main>'
+  ].join(''), ({ window, document, api }) => {
+    const toc = markElmOwned(document.querySelector('.lia-toc'))
+    const course = markElmOwned(document.querySelector('main p'))
+    const courseText = course.firstChild
+    const tocTargets = Array.from(toc.querySelectorAll('p, em, span'))
+    const tocTextNodes = tocTargets.map(element => element.firstChild)
+
+    api.setGlossary([entry('Bruch')])
+
+    assert.equal(highlights(document, toc).length, 0)
+    assert.equal(toc.querySelector('[data-lia-mathpath-bound], [data-lia-mathpath-auto-term]'), null)
+    assert.deepEqual(tocTargets.map(element => element.firstChild), tocTextNodes)
+    const ranges = Array.from(hitTesting.highlightRegistry.values()).flatMap(value => Array.from(value))
+    assert.equal(ranges.length, 1)
+    assert.strictEqual(ranges[0].startContainer, courseText)
+
+    tocTargets.forEach((target, index) => {
+      hitTesting.setCaret(tocTextNodes[index], target.tagName === 'P' ? 6 : 2)
+      target.dispatchEvent(new window.MouseEvent('mouseenter'))
+      dispatchPointer(window, target, 'pointermove')
+      assert.equal(dispatchPointer(window, target, 'pointerdown').defaultPrevented, false)
+      assert.equal(dispatchPointer(window, target, 'click').defaultPrevented, false)
+      assert.equal(document.querySelector('.lia-mathpath-tooltip[data-open="1"]'), null)
+    })
+
+    hitTesting.setCaret(courseText, 6)
+    dispatchPointer(window, course, 'pointermove')
+    assert.equal(document.querySelector('.lia-mathpath-tooltip')?.dataset.open, '1')
+    assert.strictEqual(course.firstChild, courseText)
+  }, {
+    beforeEval(window) {
+      hitTesting = installRangeHitTesting(window)
+    }
+  })
+})
+
+test('keeps repeatedly rebuilt standalone lia-navigation TOCs inactive across glossary and tooltip updates', async () => {
+  let hitTesting
+  await withMathPath('<main><em>Bruch</em></main>', async ({ window, document, api, errors }) => {
+    api.setGlossary([entry('Bruch')])
+
+    for (let cycle = 0; cycle < 3; cycle++) {
+      const toc = document.createElement('div')
+      toc.id = 'lia-bm-toc5'
+      toc.innerHTML = '<p>Ein Bruch im TOC.</p><p class="elm">Ein Bruch als Elm-Text.</p>' +
+        '<em>Bruch</em><span data-lia-term="Bruch">Bruch</span>'
+      const elmParagraph = markElmOwned(toc.querySelector('.elm'))
+      const elmText = elmParagraph.firstChild
+      document.body.append(toc)
+      await flushDomWork()
+
+      assert.equal(highlights(document, toc).length, 0, 'an inserted TOC must remain unmarked')
+      api.setGlossary([entry('Bruch', [], `Erklaerung ${cycle}`)])
+      api.setTooltips('off')
+      api.setTooltips('on')
+      await flushDomWork()
+
+      assert.equal(highlights(document, toc).length, 0)
+      assert.equal(toc.querySelector('[data-lia-mathpath-bound], [data-lia-mathpath-auto-term]'), null)
+      assert.equal(hitTesting.highlightRegistry.size, 0)
+      assert.strictEqual(elmParagraph.firstChild, elmText)
+      hitTesting.setCaret(elmText, 6)
+      dispatchPointer(window, elmParagraph, 'pointermove')
+      for (const target of toc.querySelectorAll('p, em, span')) {
+        target.dispatchEvent(new window.MouseEvent('mouseenter'))
+        assert.equal(dispatchPointer(window, target, 'pointerdown').defaultPrevented, false)
+        assert.equal(dispatchPointer(window, target, 'click').defaultPrevented, false)
+      }
+      assert.equal(document.querySelector('.lia-mathpath-tooltip[data-open="1"]'), null)
+
+      const courseTerm = document.querySelector('main em')
+      courseTerm.dispatchEvent(new window.MouseEvent('mouseenter'))
+      assert.equal(document.querySelector('.lia-mathpath-tooltip')?.dataset.open, '1')
+      courseTerm.dispatchEvent(new window.MouseEvent('mouseleave'))
+      assert.equal(document.querySelector('.lia-mathpath-tooltip')?.dataset.open, '0')
+      toc.remove()
+      await flushDomWork()
+    }
+    assert.deepEqual(errors, [])
+  }, {
+    realObserver: true,
+    beforeEval(window) {
+      hitTesting = installRangeHitTesting(window)
+    }
+  })
+})
+
+test('deactivates hovered and pinned terms and their styled clones when moved into either TOC', async () => {
+  for (const activation of ['mouseenter', 'click']) {
+    for (const tocAttribute of ['class="lia-toc"', 'id="lia-bm-toc5"']) {
+      await withMathPath([
+        '<style>nav a { cursor: pointer; font-weight: 700; border-bottom: 2px solid;',
+        '  box-shadow: 0 1px 0 blue; background-color: rgb(230, 240, 250); }</style>',
+        '<main><a href="#next" data-lia-term="Bruch">Bruch</a></main>',
+        `<nav ${tocAttribute}><a href="#next">Kapitel</a></nav>`
+      ].join(''), async ({ window, document, api, errors }) => {
+        const term = document.querySelector('main a')
+        const toc = document.querySelector('nav')
+        const baseline = toc.querySelector('a')
+        api.setGlossary([entry('Bruch')])
+        dispatchPointer(window, term, activation)
+        const tooltip = document.querySelector('.lia-mathpath-tooltip')
+        assert.equal(tooltip?.dataset.open, '1')
+
+        const clone = term.cloneNode(true)
+        toc.append(term, clone)
+        assert.equal(dispatchPointer(window, term, 'pointerdown').defaultPrevented, false,
+          'existing listeners must respect the new TOC parent before the observer runs')
+        assert.equal(dispatchPointer(window, clone, 'pointerdown').defaultPrevented, false)
+        await flushDomWork()
+        assert.equal(tooltip?.dataset.open, '0', 'moving an active term into the TOC closes its tooltip')
+
+        for (const target of [term, clone]) {
+          target.dispatchEvent(new window.MouseEvent('mouseenter'))
+          assert.equal(dispatchPointer(window, target, 'pointerdown').defaultPrevented, false)
+          assert.equal(dispatchPointer(window, target, 'click').defaultPrevented, false)
+          assert.equal(tooltip?.dataset.open, '0', 'TOC clicks must not pin a moved or cloned term')
+          const actualStyle = window.getComputedStyle(target)
+          const baselineStyle = window.getComputedStyle(baseline)
+          for (const property of ['cursor', 'borderBottomStyle', 'boxShadow', 'backgroundColor', 'fontWeight']) {
+            assert.equal(actualStyle[property], baselineStyle[property], `${property} must preserve TOC navigation styles`)
+          }
+        }
+        assert.deepEqual(errors, [])
+      }, { realObserver: true })
+    }
+  }
+})
+
+test('removes a pinned Elm range when lia-navigation moves its text into the TOC', async () => {
+  let hitTesting
+  await withMathPath('<main><p>Ein Bruch im Kurs.</p></main><div id="lia-bm-toc5"></div>',
+    async ({ window, document, api }) => {
+      const paragraph = markElmOwned(document.querySelector('p'))
+      const textNode = paragraph.firstChild
+      api.setGlossary([entry('Bruch')])
+      hitTesting.setCaret(textNode, 6)
+      dispatchPointer(window, paragraph, 'click')
+      const tooltip = document.querySelector('.lia-mathpath-tooltip')
+      assert.equal(tooltip?.dataset.open, '1')
+      assert.equal(hitTesting.highlightRegistry.get('lia-mathpath-glossary')?.size, 1)
+
+      document.querySelector('#lia-bm-toc5').append(paragraph)
+      await flushDomWork()
+
+      assert.equal(tooltip?.dataset.open, '0')
+      assert.equal(hitTesting.highlightRegistry.size, 0)
+      dispatchPointer(window, paragraph, 'pointermove')
+      assert.equal(dispatchPointer(window, paragraph, 'pointerdown').defaultPrevented, false)
+      assert.equal(dispatchPointer(window, paragraph, 'click').defaultPrevented, false)
+      assert.equal(tooltip?.dataset.open, '0')
+      assert.strictEqual(paragraph.firstChild, textNode)
+      assert.equal(paragraph.childNodes.length, 1)
+    }, {
+      realObserver: true,
+      beforeEval(window) {
+        hitTesting = installRangeHitTesting(window)
+      }
+    })
+})
+
 test('is idempotent for generated highlights and per-element listeners', async () => {
   await withMathPath('<em>Bruch</em><p>Bruch</p>', ({ document, api }) => {
     const semanticTerm = document.querySelector('em')

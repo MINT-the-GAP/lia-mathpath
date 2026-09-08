@@ -167,25 +167,27 @@ export function syncAccentColor(): void {
 export function ensureCss(): void {
   if (document.getElementById(CSS_ID)) return;
 
+  // Exclude copied or moved markers without overriding the navigation's own styles.
+  const outsideToc = ':not(.lia-toc, .lia-toc *, [id="lia-bm-toc5"], [id="lia-bm-toc5"] *)';
   const style = document.createElement('style');
   style.id = CSS_ID;
   style.textContent = [
-    '.lia-mathpath-term:not([data-lia-mathpath-auto-term]),',
-    ':root:not([data-lia-mathpath-tooltips="off"]) .lia-mathpath-term[data-lia-mathpath-auto-term] {',
+    `.lia-mathpath-term${outsideToc}:not([data-lia-mathpath-auto-term]),`,
+    `:root:not([data-lia-mathpath-tooltips="off"]) .lia-mathpath-term${outsideToc}[data-lia-mathpath-auto-term] {`,
     '  border-bottom: 1px dashed currentColor;',
     '  cursor: help;',
     '  font-weight: 500;',
     '}',
-    '.lia-mathpath-glossary-highlight:not([data-lia-mathpath-auto-term]),',
-    ':root:not([data-lia-mathpath-tooltips="off"]) .lia-mathpath-glossary-highlight[data-lia-mathpath-auto-term] {',
+    `.lia-mathpath-glossary-highlight${outsideToc}:not([data-lia-mathpath-auto-term]),`,
+    `:root:not([data-lia-mathpath-tooltips="off"]) .lia-mathpath-glossary-highlight${outsideToc}[data-lia-mathpath-auto-term] {`,
     '  background-color: rgba(var(--lia-mathpath-accent-rgb, 20, 115, 117), 0.18);',
     '  box-shadow: inset 0 -2px 0 rgba(var(--lia-mathpath-accent-rgb, 20, 115, 117), 0.65);',
     '  font-weight: 500;',
     '  cursor: pointer;',
     '  transition: background-color 120ms ease, box-shadow 120ms ease;',
     '}',
-    '.lia-mathpath-glossary-highlight:not([data-lia-mathpath-auto-term]):hover,',
-    ':root:not([data-lia-mathpath-tooltips="off"]) .lia-mathpath-glossary-highlight[data-lia-mathpath-auto-term]:hover {',
+    `.lia-mathpath-glossary-highlight${outsideToc}:not([data-lia-mathpath-auto-term]):hover,`,
+    `:root:not([data-lia-mathpath-tooltips="off"]) .lia-mathpath-glossary-highlight${outsideToc}[data-lia-mathpath-auto-term]:hover {`,
     '  background-color: rgba(var(--lia-mathpath-accent-rgb, 20, 115, 117), 0.3);',
     '  box-shadow: inset 0 -2px 0 rgba(var(--lia-mathpath-accent-rgb, 20, 115, 117), 0.82);',
     '}',
