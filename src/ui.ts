@@ -53,7 +53,7 @@ const PLUGIN_OWNED_SELECTOR = [
 
 const EXCLUDED_TAGS = new Set([
   'SCRIPT', 'STYLE', 'PRE', 'CODE', 'NOSCRIPT', 'TEXTAREA',
-  'INPUT', 'BUTTON', 'SVG', 'CANVAS'
+  'INPUT', 'BUTTON', 'SELECT', 'OPTION', 'SVG', 'CANVAS'
 ]);
 const CODE_CONTEXT_SELECTOR = [
   'code',
@@ -69,6 +69,8 @@ const CODE_CONTEXT_SELECTOR = [
 const EXCLUDED_CONTEXT_SELECTOR = [
   Array.from(EXCLUDED_TAGS).map(tag => tag.toLowerCase()).join(', '),
   CODE_CONTEXT_SELECTOR,
+  '[contenteditable]:not([contenteditable="false"])',
+  '[role="toolbar"]',
   // Exclude native entries and lia-navigation's TOC, including rebuilt or relocated containers.
   '.lia-toc',
   '#lia-bm-toc5',
@@ -585,7 +587,7 @@ function ensureTooltip(isNested = false): HTMLDivElement {
 function hideTooltip(isNested = false): void {
   if (!isNested) _tooltipTarget = null;
   const tip = isNested ? _nestedTooltip : _tooltip;
-  if (!tip || !tip.isConnected) return;
+  if (!tip || !tip.isConnected || tip.getAttribute('data-open') === '0') return;
   tip.setAttribute('data-open', '0');
   tip.textContent = '';
 }
@@ -688,13 +690,13 @@ function bindElement(el: Element): void {
   el.dataset.liaMathpathBound = '1';
 
   el.addEventListener('mouseenter', function () {
-    if (isExcludedGlossaryContext(el)) return;
+    if (!el.hasAttribute('data-lia-term') || isExcludedGlossaryContext(el)) return;
     if (!_automaticTooltipsEnabled && el.hasAttribute(AUTOMATIC_TERM_ATTRIBUTE)) return;
     showForTarget(el);
   });
 
   el.addEventListener('pointerdown', function (ev) {
-    if (isExcludedGlossaryContext(el)) return;
+    if (!el.hasAttribute('data-lia-term') || isExcludedGlossaryContext(el)) return;
     if (!_automaticTooltipsEnabled && el.hasAttribute(AUTOMATIC_TERM_ATTRIBUTE)) return;
     ev.preventDefault();
     _tooltipPinned = true;
@@ -704,7 +706,7 @@ function bindElement(el: Element): void {
   });
 
   el.addEventListener('mouseleave', function (ev) {
-    if (isExcludedGlossaryContext(el)) return;
+    if (!el.hasAttribute('data-lia-term') || isExcludedGlossaryContext(el)) return;
     if (!_automaticTooltipsEnabled && el.hasAttribute(AUTOMATIC_TERM_ATTRIBUTE)) return;
     const nextTarget = ev.relatedTarget as Node | null;
     if (nextTarget && isInsideTooltip(nextTarget)) return;
@@ -713,7 +715,7 @@ function bindElement(el: Element): void {
   });
 
   el.addEventListener('click', function () {
-    if (isExcludedGlossaryContext(el)) return;
+    if (!el.hasAttribute('data-lia-term') || isExcludedGlossaryContext(el)) return;
     if (!_automaticTooltipsEnabled && el.hasAttribute(AUTOMATIC_TERM_ATTRIBUTE)) return;
     _tooltipPinned = true;
     _pinnedTarget = el;
@@ -846,6 +848,10 @@ function isVirtualMatchLive(match: VirtualGlossaryMatch): boolean {
 
 function getVirtualMatchRects(match: VirtualGlossaryMatch): DOMRect[] {
   if (!isVirtualMatchLive(match)) return [];
+  const parent = match.node.parentElement!;
+  const visibility = window.getComputedStyle(parent).visibility;
+  if (parent.closest('[hidden], [aria-hidden="true"]') ||
+      visibility === 'hidden' || visibility === 'collapse') return [];
   try {
     return Array.from(match.range.getClientRects()).filter(rect => rect.width > 0.5 && rect.height > 0.5);
   } catch (_) {
@@ -988,11 +994,26 @@ function authoredElementFromPoint(clientX: number, clientY: number): Element | n
   return null;
 }
 
+function isTooltipTargetLive(target: Element): boolean {
+  if (!target.isConnected || isExcludedGlossaryContext(target) ||
+      !target.hasAttribute('data-lia-term') ||
+      !getGlossaryEntry(target.getAttribute('data-lia-term') || '') ||
+      target.closest('[hidden], [aria-hidden="true"]')) return false;
+  // Visibility can be inherited; display:none on an ancestor also hides a pin.
+  for (let element: Element | null = target; element; element = element.parentElement) {
+    const style = window.getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') return false;
+  }
+  return true;
+}
+
 function refreshGlossaryLayout(): void {
-  scheduleVirtualPainting();
+  // CSS Highlights follow their ranges through layout changes automatically.
+  // Only the fallback rectangles need repainting; do not revalidate every term.
+  if (!getHighlightRegistry()) scheduleVirtualPainting();
 
   // A navigation rebuild can move an already active term into an excluded container.
-  if (_tooltipTarget && (!_tooltipTarget.isConnected || isExcludedGlossaryContext(_tooltipTarget))) {
+  if (_tooltipTarget && !isTooltipTargetLive(_tooltipTarget)) {
     hideTooltip();
     hideTooltip(true);
     clearPinnedTooltip();
@@ -1027,7 +1048,7 @@ function refreshGlossaryLayout(): void {
   }
 
   if (!_pinnedTarget) return;
-  if (!_pinnedTarget.isConnected || isExcludedGlossaryContext(_pinnedTarget)) {
+  if (!isTooltipTargetLive(_pinnedTarget)) {
     hideTooltip();
     clearPinnedTooltip();
     return;
@@ -1059,33 +1080,44 @@ function findReplacementVirtualMatch(previous: VirtualGlossaryMatch | null): Vir
   ) || null;
 }
 
-function rebuildVirtualGlossaryMatches(matcher: PreparedGlossaryMatcher | null): void {
+function rebuildVirtualGlossaryMatches(
+  matcher: PreparedGlossaryMatcher | null,
+  scopes: Node[] = [document.body]
+): void {
   const previousPinned = _pinnedVirtualMatch;
   const previousHovered = _hoveredVirtualMatch;
   const nextMatches: VirtualGlossaryMatch[] = [];
   const nextByNode = new WeakMap<Text, VirtualGlossaryMatch[]>();
+  const dirtyScopes = new Set(scopes);
 
-  if (matcher && document.body) {
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
-    let current: Node | null;
-    while ((current = walker.nextNode()) !== null) {
-      if (!shouldProcessTextNode(current) || !isElmManagedNode(current)) continue;
-      const textMatches = findGlossaryMatches(current.data, matcher);
-      if (textMatches.length === 0) continue;
+  function isDirty(node: Node): boolean {
+    for (let current: Node | null = node; current; current = current.parentNode) {
+      if (dirtyScopes.has(current)) return true;
+    }
+    return false;
+  }
 
-      const nodeMatches: VirtualGlossaryMatch[] = [];
-      for (let i = 0; i < textMatches.length; i++) {
-        const textMatch = textMatches[i];
-        const range = createRangeForMatch(current, textMatch);
-        if (!range) continue;
-        const virtualMatch = { ...textMatch, node: current, range };
-        nodeMatches.push(virtualMatch);
-        nextMatches.push(virtualMatch);
+  if (matcher) {
+    // Retain unaffected ranges, including their identity for stationary hover.
+    for (const match of _virtualMatches) {
+      if (!isDirty(match.node) && isVirtualMatchLive(match)) nextMatches.push(match);
+    }
+    for (const scope of scopes) {
+      for (const node of textNodesInScope(scope)) {
+        if (!isElmManagedNode(node)) continue;
+        for (const match of findGlossaryMatches(node.data, matcher)) {
+          const range = createRangeForMatch(node, match);
+          if (range) nextMatches.push({ ...match, node, range });
+        }
       }
-      if (nodeMatches.length > 0) nextByNode.set(current, nodeMatches);
     }
   }
 
+  for (const match of nextMatches) {
+    const matches = nextByNode.get(match.node);
+    if (matches) matches.push(match);
+    else nextByNode.set(match.node, [match]);
+  }
   _virtualMatches = nextMatches;
   _virtualMatchesByNode = nextByNode;
   _pinnedVirtualMatch = findReplacementVirtualMatch(previousPinned);
@@ -1099,7 +1131,6 @@ function rebuildVirtualGlossaryMatches(matcher: PreparedGlossaryMatcher | null):
   }
 
   updateVirtualPainting();
-  if (_pinnedVirtualMatch) refreshGlossaryLayout();
 }
 
 function textPointFromClientPoint(clientX: number, clientY: number): { node: Text; offset: number } | null {
@@ -1136,6 +1167,8 @@ function findVirtualMatchAtPoint(
   clientY: number,
   eventTarget: EventTarget | null
 ): VirtualGlossaryHit | null {
+  if (!_automaticTooltipsEnabled || _virtualMatches.length === 0 ||
+      (eventTarget instanceof Element && isExcludedGlossaryContext(eventTarget))) return null;
   const point = textPointFromClientPoint(clientX, clientY);
   if (point) {
     const candidates = _virtualMatchesByNode.get(point.node) || [];
@@ -1223,33 +1256,58 @@ function highlightTermsInNode(node: Node, matcher: PreparedGlossaryMatcher): boo
   return true;
 }
 
+function textNodesInScope(scope: Node): Text[] {
+  if (!scope.isConnected) return [];
+  if (scope.nodeType === Node.TEXT_NODE) return shouldProcessTextNode(scope) ? [scope] : [];
+  if (shouldSkipElement(scope)) return [];
+  const nodes: Text[] = [];
+  // Reject excluded subtrees instead of visiting every editor/canvas descendant.
+  const walker = document.createTreeWalker(scope, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (node instanceof Element) {
+        return shouldSkipElement(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
+      }
+      return shouldProcessTextNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+    }
+  });
+  let current: Node | null;
+  while ((current = walker.nextNode()) !== null) nodes.push(current as Text);
+  return nodes;
+}
+
+function reconcileAutomaticTerms(scope: Node): void {
+  for (const element of getElementsInScope(scope, '[' + AUTOMATIC_TERM_ATTRIBUTE + ']')) {
+    const entry = getGlossaryEntryForText((element.textContent || '').trim());
+    if (entry) {
+      if (element.getAttribute('data-lia-term') !== entry.term) {
+        element.setAttribute('data-lia-term', entry.term);
+      }
+    } else {
+      element.removeAttribute('data-lia-term');
+      element.removeAttribute(AUTOMATIC_TERM_ATTRIBUTE);
+      element.classList.remove('lia-mathpath-term', 'lia-mathpath-glossary-highlight');
+    }
+  }
+}
+
+function highlightGlossaryTermsInScopes(scopes: Node[]): void {
+  const matcher = _automaticTooltipsEnabled
+    ? prepareGlossaryMatcher(getGlossaryMatchForms())
+    : null;
+  for (const scope of scopes) {
+    if (!scope.isConnected || (scope instanceof Element && isExcludedGlossaryContext(scope))) continue;
+    if (_automaticTooltipsEnabled) reconcileAutomaticTerms(scope);
+    bindInScope(scope);
+    if (!matcher) continue;
+    activateSemanticTermsInScope(scope);
+    for (const node of textNodesInScope(scope)) highlightTermsInNode(node, matcher);
+    bindInScope(scope);
+  }
+  rebuildVirtualGlossaryMatches(matcher, scopes);
+}
+
 function highlightGlossaryTermsInScope(scope: Node = document.body): void {
-  bindInScope(scope);
-  if (!_automaticTooltipsEnabled) {
-    rebuildVirtualGlossaryMatches(null);
-    return;
-  }
-  activateSemanticTermsInScope(scope);
-
-  const matcher = prepareGlossaryMatcher(getGlossaryMatchForms());
-  if (!matcher) {
-    rebuildVirtualGlossaryMatches(null);
-    return;
-  }
-
-  const queue: Node[] = [];
-  if (scope.nodeType === Node.TEXT_NODE) {
-    queue.push(scope);
-  } else {
-    const ownerDocument = scope.ownerDocument || document;
-    const walker = ownerDocument.createTreeWalker(scope, NodeFilter.SHOW_TEXT, null);
-    let currentNode: Node | null;
-    while ((currentNode = walker.nextNode()) !== null) queue.push(currentNode);
-  }
-
-  for (let i = 0; i < queue.length; i++) highlightTermsInNode(queue[i], matcher);
-  rebuildVirtualGlossaryMatches(matcher);
-  bindInScope(scope);
+  highlightGlossaryTermsInScopes([scope]);
 }
 
 export function highlightGlossaryTerms(scope: Node = document.body): void {
@@ -1304,8 +1362,15 @@ export function bindGlossaryInteractions(scope: ParentNode): void {
     if (_tooltipPinned || ev.pointerType === 'touch') return;
     const target = ev.target;
     if (target instanceof Element && target.closest('.lia-mathpath-tooltip')) return;
+    if (target instanceof Element && isExcludedGlossaryContext(target)) {
+      _lastVirtualPointerPoint = null;
+      setHoveredVirtualMatch(null);
+      hideTooltip();
+      hideTooltip(true);
+      return;
+    }
     _lastVirtualPointerPoint = { clientX: ev.clientX, clientY: ev.clientY };
-    if (target instanceof Element && !isExcludedGlossaryContext(target) &&
+    if (target instanceof Element &&
         target.closest('.lia-mathpath-glossary-highlight')) {
       setHoveredVirtualMatch(null);
       return;
@@ -1346,6 +1411,14 @@ export function bindGlossaryInteractions(scope: ParentNode): void {
 
     if (target.closest('.lia-mathpath-tooltip')) {
       // Clicking non-term content inside a tooltip is treated as an explicit close action.
+      hideTooltip();
+      hideTooltip(true);
+      clearPinnedTooltip();
+      return;
+    }
+
+    if (isExcludedGlossaryContext(target)) {
+      _lastVirtualPointerPoint = null;
       hideTooltip();
       hideTooltip(true);
       clearPinnedTooltip();
@@ -1410,58 +1483,165 @@ function isPluginOwnedMutationNode(node: Node): boolean {
   return !!element?.closest(PLUGIN_OWNED_SELECTOR);
 }
 
+// These attributes can change glossary eligibility, rather than just geometry.
+const GLOSSARY_CONTEXT_CLASSES = new Set([
+  ...(EXCLUDED_CONTEXT_SELECTOR.match(/\.[\w-]+/g) || []).map(name => name.slice(1)),
+  'lia-mathpath-term', 'lia-mathpath-glossary-highlight'
+]);
+const DYNAMIC_CONTENT_OPTIONS: MutationObserverInit = {
+  childList: true,
+  subtree: true,
+  attributes: true,
+  attributeOldValue: true,
+  characterData: true,
+  attributeFilter: [
+    'class', 'id', 'data-lia-term', 'contenteditable', 'role',
+    'style', 'hidden', 'open', 'width', 'height', 'aria-hidden'
+  ]
+};
+
+function changesGlossaryContext(record: MutationRecord, element: Element): boolean {
+  if (record.attributeName === 'class') {
+    const previous = new Set((record.oldValue || '').split(/\s+/));
+    return Array.from(GLOSSARY_CONTEXT_CLASSES).some(name =>
+      previous.has(name) !== element.classList.contains(name));
+  }
+  if (record.attributeName === 'id') {
+    return (record.oldValue === 'lia-bm-toc5') !== (element.id === 'lia-bm-toc5');
+  }
+  if (record.attributeName === 'role') {
+    return (record.oldValue === 'toolbar') !== (element.getAttribute('role') === 'toolbar');
+  }
+  if (record.attributeName === 'contenteditable') {
+    const wasEditable = record.oldValue !== null && record.oldValue !== 'false';
+    return wasEditable !== (element.hasAttribute('contenteditable') &&
+      element.getAttribute('contenteditable') !== 'false');
+  }
+  return false;
+}
+
 export function observeDynamicContent(): void {
   if (_observer || !document.body) return;
-  _observer = new MutationObserver(function (records) {
-    let contentChanged = false;
-    let childContentChanged = false;
-    let layoutChanged = false;
-    for (let i = 0; i < records.length; i++) {
-      const rec = records[i];
-      if (isPluginOwnedMutationNode(rec.target)) continue;
+  const dirtyScopes = new Set<Node>();
+  const explainScopes = new Set<Element>();
+  let frame = 0;
+  let removedContent = false;
+  let discoverGlossary = false;
+  let detailsChanged = false;
+  let layoutChanged = false;
 
-      if (rec.type === 'characterData') {
-        contentChanged = true;
-        continue;
-      }
+  function addScope(node: Node): void {
+    // Text changes inside an existing automatic marker or emphasis need its
+    // complete surface; ordinary text only needs its own node reindexed.
+    const parent = node instanceof Element ? node : node.parentElement;
+    const semantic = parent?.closest('em, [' + AUTOMATIC_TERM_ATTRIBUTE + ']');
+    dirtyScopes.add(semantic || node);
+  }
 
-      if (rec.type === 'attributes') {
-        if (rec.attributeName === 'class' || rec.attributeName === 'id' || rec.attributeName === 'data-lia-term') {
-          contentChanged = true;
-        } else {
+  function containsDetails(node: Node): boolean {
+    if (!(node instanceof Element)) return false;
+    const selector = '[data-adetails], [data-adetails-all], [data-adetails-raw], [data-adetail-tags]';
+    return node.matches(selector) || !!node.querySelector(selector);
+  }
+
+  function containsTable(node: Node): boolean {
+    const element = node instanceof Element ? node : node.parentElement;
+    return !!element && (!!element.closest('table') || !!element.querySelector('table'));
+  }
+
+  function collect(records: MutationRecord[]): void {
+    for (const record of records) {
+      if (isPluginOwnedMutationNode(record.target)) continue;
+      const target = record.target instanceof Element ? record.target : record.target.parentElement;
+      if (!target) continue;
+      if (record.type === 'attributes') {
+        if (record.oldValue === target.getAttribute(record.attributeName!)) continue;
+        if (changesGlossaryContext(record, target)) {
+          addScope(target);
+          layoutChanged = true;
+        } else if (record.attributeName === 'data-lia-term') {
+          if (!isExcludedGlossaryContext(target)) addScope(target);
+        } else if (!isExcludedGlossaryContext(target) ||
+                   ['style', 'hidden', 'open', 'width', 'height'].includes(record.attributeName!)) {
+          // Foreign class/id changes (e.g. bm-row) affect layout, not text.
+          // Excluded toolbar state does not need even a layout refresh.
           layoutChanged = true;
         }
         continue;
       }
 
-      for (let j = 0; j < rec.addedNodes.length; j++) {
-        const node = rec.addedNodes[j];
+      if (isExcludedGlossaryContext(target)) continue;
+      if (record.type === 'characterData') {
+        addScope(record.target);
+        if (target.closest('table')) discoverGlossary = true;
+        layoutChanged = true;
+        continue;
+      }
+
+      for (const node of record.addedNodes) {
         if (isPluginOwnedMutationNode(node)) continue;
-        contentChanged = true;
-        childContentChanged = true;
-        if (node instanceof Element) processExplainElements(node);
+        if (node instanceof Element) explainScopes.add(node);
+        if (containsDetails(node)) detailsChanged = true;
+        if (!(node instanceof Element && isExcludedGlossaryContext(node))) addScope(node);
+        if (containsTable(node)) discoverGlossary = true;
+        layoutChanged = true;
       }
-      for (let j = 0; j < rec.removedNodes.length; j++) {
-        if (isPluginOwnedMutationNode(rec.removedNodes[j])) continue;
-        contentChanged = true;
-        childContentChanged = true;
+      for (const node of record.removedNodes) {
+        if (isPluginOwnedMutationNode(node)) continue;
+        removedContent = true;
+        layoutChanged = true;
+        if (target.closest('table')) discoverGlossary = true;
+        if (containsDetails(node)) detailsChanged = true;
+        if (target.closest('em, [' + AUTOMATIC_TERM_ATTRIBUTE + ']')) addScope(target);
       }
     }
 
-    if (contentChanged) highlightGlossaryTermsInScope(document.body);
-    if (contentChanged || layoutChanged) refreshGlossaryLayout();
-    if (childContentChanged) {
-      if (_discoverGlossary) _discoverGlossary();
-      processExplainElements(document);
+    if (!frame && (dirtyScopes.size || explainScopes.size || removedContent || layoutChanged)) {
+      frame = window.requestAnimationFrame(flush);
     }
-  });
+  }
 
-  _observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    characterData: true,
-    attributeFilter: ['class', 'id', 'data-lia-term', 'style', 'hidden', 'open', 'width', 'height']
-  });
+  function flush(): void {
+    // Include records queued since the last observer delivery before pausing
+    // observation of our own synchronous marker and tooltip writes.
+    collect(_observer!.takeRecords());
+    frame = 0;
+    const scopes = Array.from(dirtyScopes).filter(node => {
+      if (!node.isConnected) return false;
+      for (let parent = node.parentNode; parent; parent = parent.parentNode) {
+        if (dirtyScopes.has(parent)) return false;
+      }
+      return true;
+    });
+    const explanations = Array.from(explainScopes).filter(node => node.isConnected);
+    const updateContent = scopes.length > 0 || removedContent;
+    const updateLayout = layoutChanged || updateContent;
+    const discover = discoverGlossary;
+    const updateDetails = detailsChanged;
+    dirtyScopes.clear();
+    explainScopes.clear();
+    removedContent = false;
+    discoverGlossary = false;
+    detailsChanged = false;
+    layoutChanged = false;
+
+    _observer!.disconnect();
+    try {
+      if (updateContent) highlightGlossaryTermsInScopes(scopes);
+      if (updateDetails) processExplainElements(document);
+      else for (const scope of explanations) processExplainElements(scope);
+      // Only table content can introduce a glossary. Toolbar/ordinary text
+      // mutations must not indirectly request a document-wide discovery scan.
+      if (discover) _discoverGlossary?.();
+      if (updateContent && _tooltipTarget && isTooltipTargetLive(_tooltipTarget)) {
+        showForTarget(_tooltipTarget);
+      }
+      if (updateLayout) refreshGlossaryLayout();
+    } finally {
+      _observer!.observe(document.body, DYNAMIC_CONTENT_OPTIONS);
+    }
+  }
+
+  _observer = new MutationObserver(collect);
+  _observer.observe(document.body, DYNAMIC_CONTENT_OPTIONS);
 }
-

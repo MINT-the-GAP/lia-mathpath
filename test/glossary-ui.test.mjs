@@ -7,7 +7,7 @@ import { JSDOM, VirtualConsole } from 'jsdom'
 let bundleSource = ''
 
 before(async () => {
-  bundleSource = await readFile(new URL('../dist/index.js', import.meta.url), 'utf8')
+  bundleSource = await readFile(process.env.MATHPATH_TEST_BUNDLE || new URL('../dist/index.js', import.meta.url), 'utf8')
 })
 
 function entry(term, aliases = [], explanation = `${term} erklärt`) {
@@ -35,6 +35,10 @@ function installRangeHitTesting(window, {
   const state = {
     node: null,
     offset: 0,
+    caretPositionCalls: 0,
+    caretRangeCalls: 0,
+    rangeRectCalls: 0,
+    highlightRegistrations: 0,
     highlightRegistry: null,
     highlightConstructorArgumentCounts: [],
     rect: {
@@ -55,19 +59,26 @@ function installRangeHitTesting(window, {
     clearCaret() {
       this.node = null
       this.offset = 0
+    },
+    resetCalls() {
+      this.caretPositionCalls = 0
+      this.caretRangeCalls = 0
+      this.rangeRectCalls = 0
+      this.highlightRegistrations = 0
     }
   }
 
   function caretPosition() {
+    state.caretPositionCalls++
     if (!state.node || !state.node.isConnected) return null
     return { offsetNode: state.node, offset: state.offset }
   }
 
   function caretRange() {
-    const position = caretPosition()
-    if (!position) return null
+    state.caretRangeCalls++
+    if (!state.node || !state.node.isConnected) return null
     const range = window.document.createRange()
-    range.setStart(position.offsetNode, position.offset)
+    range.setStart(state.node, state.offset)
     range.collapse(true)
     return range
   }
@@ -95,7 +106,9 @@ function installRangeHitTesting(window, {
   Object.defineProperty(window.Range.prototype, 'getClientRects', {
     configurable: true,
     value() {
+      state.rangeRectCalls++
       if (this.collapsed || !this.startContainer?.isConnected) return []
+      if (this.startContainer.parentElement?.closest('[hidden], [data-test-hidden="1"]')) return []
       const rects = [state.rect]
       rects.item = index => rects[index] || null
       return rects
@@ -104,6 +117,7 @@ function installRangeHitTesting(window, {
   Object.defineProperty(window.Range.prototype, 'getBoundingClientRect', {
     configurable: true,
     value() {
+      state.rangeRectCalls++
       return this.collapsed || !this.startContainer?.isConnected
         ? { ...state.rect, width: 0, height: 0, right: state.rect.left, bottom: state.rect.top }
         : state.rect
@@ -112,7 +126,12 @@ function installRangeHitTesting(window, {
 
   if (cssHighlights) {
     const css = window.CSS || {}
-    const highlightRegistry = new Map()
+    const highlightRegistry = new class extends Map {
+      set(name, value) {
+        if (name === 'lia-mathpath-glossary') state.highlightRegistrations++
+        return super.set(name, value)
+      }
+    }()
     state.highlightRegistry = highlightRegistry
     Object.defineProperty(css, 'highlights', {
       configurable: true,
@@ -150,10 +169,46 @@ function assertSameChildren(element, children) {
   children.forEach((child, index) => assert.strictEqual(element.childNodes[index], child))
 }
 
-async function flushDomWork() {
+async function flushDomWork(window) {
   await Promise.resolve()
   await new Promise(resolve => setImmediate(resolve))
+  // The observer batches content work in one frame; painting can use the next frame.
+  for (let frame = 0; frame < 2; frame++) {
+    await new Promise(resolve => window.requestAnimationFrame(resolve))
+  }
   await Promise.resolve()
+}
+
+function trackTextWalks(document) {
+  const roots = []
+  const visited = []
+  const nativeCreateTreeWalker = document.createTreeWalker
+  document.createTreeWalker = function (root, whatToShow, filter) {
+    const walker = nativeCreateTreeWalker.call(this, root, whatToShow, filter)
+    if (whatToShow & document.defaultView.NodeFilter.SHOW_TEXT) {
+      roots.push(root)
+      const nativeNextNode = walker.nextNode
+      walker.nextNode = function () {
+        const node = nativeNextNode.call(this)
+        if (node?.nodeType === document.defaultView.Node.TEXT_NODE) visited.push(node)
+        return node
+      }
+    }
+    return walker
+  }
+  return {
+    roots,
+    visited,
+    reset() {
+      roots.length = 0
+      visited.length = 0
+    },
+    assertLocal() {
+      assert.equal(roots.includes(document.body), false, 'local mutations must not walk document.body')
+      assert.equal(roots.includes(document.documentElement), false, 'local mutations must not walk the document root')
+      assert.equal(roots.includes(document), false, 'local mutations must not walk the whole document')
+    }
+  }
 }
 
 async function withMathPath(body, callback, options = {}) {
@@ -170,6 +225,16 @@ async function withMathPath(body, callback, options = {}) {
   window.fetch = async () => ({ ok: false, text: async () => '' })
   window.setInterval = () => 1
   window.clearInterval = () => {}
+  const observers = []
+  if (options.realObserver) {
+    const NativeMutationObserver = window.MutationObserver
+    window.MutationObserver = class extends NativeMutationObserver {
+      constructor(callback) {
+        super(callback)
+        observers.push(this)
+      }
+    }
+  }
   if (!options.realObserver) {
     window.MutationObserver = class {
       observe() {}
@@ -184,8 +249,10 @@ async function withMathPath(body, callback, options = {}) {
     for (let i = 0; i < evaluations; i++) window.eval(bundleSource)
     assert.ok(window.__LIA_MATHPATH__, 'bundle must expose the MathPath API')
     await callback({ dom, window, document: window.document, api: window.__LIA_MATHPATH__, errors })
-    await flushDomWork()
   } finally {
+    await flushDomWork(window)
+    // Closing jsdom removes body; observers must not schedule new frames during teardown.
+    observers.forEach(observer => observer.disconnect())
     dom.window.close()
   }
 }
@@ -232,7 +299,7 @@ test('follows LiaScript light and dark theme tokens instead of arbitrary button 
     '<main class="lia-slide__content">Theme-Probe</main>'
   ].join('')
 
-  await withMathPath(themeFixture, async ({ document }) => {
+  await withMathPath(themeFixture, async ({ window, document }) => {
     const root = document.documentElement
     const value = property => root.style.getPropertyValue(property).trim()
 
@@ -242,7 +309,7 @@ test('follows LiaScript light and dark theme tokens instead of arbitrary button 
     assert.equal(value('--lia-mathpath-text-rgb'), '24, 28, 34')
 
     root.classList.add('lia-variant-dark')
-    await flushDomWork()
+    await flushDomWork(window)
 
     assert.equal(value('--lia-mathpath-accent-rgb'), '150, 230, 235')
     assert.equal(value('--lia-mathpath-accent-contrast-rgb'), '0, 0, 0')
@@ -371,7 +438,7 @@ test('reindexes Elm-owned ranges after characterData changes and removes stale h
     hitTesting.clearCaret()
     dispatchPointer(window, document.body, 'pointermove', { x: 300, y: 100 })
     textNode.data = 'Eine Summe entsteht.'
-    await flushDomWork()
+    await flushDomWork(window)
 
     hitTesting.setCaret(textNode, 7)
     dispatchPointer(window, paragraph, 'pointermove')
@@ -384,7 +451,7 @@ test('reindexes Elm-owned ranges after characterData changes and removes stale h
     hitTesting.clearCaret()
     dispatchPointer(window, document.body, 'pointermove', { x: 300, y: 100 })
     textNode.data = 'Kein Fachwort bleibt.'
-    await flushDomWork()
+    await flushDomWork(window)
 
     hitTesting.setCaret(textNode, 6)
     dispatchPointer(window, paragraph, 'pointermove')
@@ -393,12 +460,12 @@ test('reindexes Elm-owned ranges after characterData changes and removes stale h
     assertSameChildren(paragraph, childNodes)
 
     textNode.data = 'Ein Bruch entsteht.'
-    await flushDomWork()
+    await flushDomWork(window)
     hitTesting.setCaret(textNode, 6)
     dispatchPointer(window, paragraph, 'click')
     assert.equal(tooltip?.dataset.open, '1')
     paragraph.remove()
-    await flushDomWork()
+    await flushDomWork(window)
 
     window.dispatchEvent(new window.Event('scroll'))
     assert.equal(tooltip?.dataset.open, '0', 'detaching the Elm container closes a pinned range tooltip')
@@ -425,7 +492,7 @@ test('closes an unpinned virtual tooltip immediately when characterData removes 
     assert.equal(tooltip?.dataset.open, '1')
 
     textNode.data = 'Kein Fachwort bleibt.'
-    await flushDomWork()
+    await flushDomWork(window)
 
     assert.equal(
       tooltip?.dataset.open,
@@ -620,8 +687,10 @@ test('dynamic no-glossary opt-out removes and restores an Elm-owned virtual term
     const tooltip = document.querySelector('.lia-mathpath-tooltip')
     assert.equal(tooltip?.dataset.open, '1')
 
+    await flushDomWork(window)
+    const walks = trackTextWalks(document)
     paragraph.classList.add('lia-mathpath-no-glossary')
-    await flushDomWork()
+    await flushDomWork(window)
 
     assert.equal(registry.size, 0, 'opting out removes normal-term ranges from the CSS registry')
     assert.equal(tooltip?.dataset.open, '0')
@@ -631,7 +700,7 @@ test('dynamic no-glossary opt-out removes and restores an Elm-owned virtual term
     assertSameChildren(paragraph, childNodes)
 
     paragraph.classList.remove('lia-mathpath-no-glossary')
-    await flushDomWork()
+    await flushDomWork(window)
 
     assert.equal(registry.size, 1, 'removing the opt-out class registers the normal term again')
     const restoredHighlight = Array.from(registry.values())[0]
@@ -641,6 +710,7 @@ test('dynamic no-glossary opt-out removes and restores an Elm-owned virtual term
     assert.equal(tooltip?.querySelector('.lia-mathpath-tooltip-title')?.textContent, 'Bruch')
     assert.strictEqual(paragraph.firstChild, textNode)
     assertSameChildren(paragraph, childNodes)
+    walks.assertLocal()
     assert.deepEqual(errors, [])
   }, {
     realObserver: true,
@@ -785,9 +855,9 @@ test('setTooltips on catches up content added while automatic tooltips were off'
     elmParagraph.textContent = 'Auch dieser Bruch kam spaeter hinzu.'
     const elmText = elmParagraph.firstChild
     document.body.append(unmanaged, elmParagraph)
-    await flushDomWork()
+    await flushDomWork(window)
     api.setGlossary([entry('Bruch')])
-    await flushDomWork()
+    await flushDomWork(window)
 
     assert.equal(unmanaged.querySelector('[data-lia-mathpath-auto-term]'), null)
     assert.strictEqual(elmParagraph.firstChild, elmText)
@@ -1031,13 +1101,13 @@ test('keeps repeatedly rebuilt standalone lia-navigation TOCs inactive across gl
       const elmParagraph = markElmOwned(toc.querySelector('.elm'))
       const elmText = elmParagraph.firstChild
       document.body.append(toc)
-      await flushDomWork()
+      await flushDomWork(window)
 
       assert.equal(highlights(document, toc).length, 0, 'an inserted TOC must remain unmarked')
       api.setGlossary([entry('Bruch', [], `Erklaerung ${cycle}`)])
       api.setTooltips('off')
       api.setTooltips('on')
-      await flushDomWork()
+      await flushDomWork(window)
 
       assert.equal(highlights(document, toc).length, 0)
       assert.equal(toc.querySelector('[data-lia-mathpath-bound], [data-lia-mathpath-auto-term]'), null)
@@ -1058,7 +1128,7 @@ test('keeps repeatedly rebuilt standalone lia-navigation TOCs inactive across gl
       courseTerm.dispatchEvent(new window.MouseEvent('mouseleave'))
       assert.equal(document.querySelector('.lia-mathpath-tooltip')?.dataset.open, '0')
       toc.remove()
-      await flushDomWork()
+      await flushDomWork(window)
     }
     assert.deepEqual(errors, [])
   }, {
@@ -1091,7 +1161,7 @@ test('deactivates hovered and pinned terms and their styled clones when moved in
         assert.equal(dispatchPointer(window, term, 'pointerdown').defaultPrevented, false,
           'existing listeners must respect the new TOC parent before the observer runs')
         assert.equal(dispatchPointer(window, clone, 'pointerdown').defaultPrevented, false)
-        await flushDomWork()
+        await flushDomWork(window)
         assert.equal(tooltip?.dataset.open, '0', 'moving an active term into the TOC closes its tooltip')
 
         for (const target of [term, clone]) {
@@ -1125,7 +1195,7 @@ test('removes a pinned Elm range when lia-navigation moves its text into the TOC
       assert.equal(hitTesting.highlightRegistry.get('lia-mathpath-glossary')?.size, 1)
 
       document.querySelector('#lia-bm-toc5').append(paragraph)
-      await flushDomWork()
+      await flushDomWork(window)
 
       assert.equal(tooltip?.dataset.open, '0')
       assert.equal(hitTesting.highlightRegistry.size, 0)
@@ -1208,7 +1278,7 @@ test('observer activates inserted Elm emphasis and detached pinned targets stay 
     const textNode = emphasis.firstChild
 
     document.body.append(paragraph)
-    await flushDomWork()
+    await flushDomWork(window)
 
     assert.strictEqual(paragraph.querySelector('em'), emphasis)
     assert.strictEqual(emphasis.firstChild, textNode)
@@ -1220,7 +1290,427 @@ test('observer activates inserted Elm emphasis and detached pinned targets stay 
     assert.doesNotThrow(() => window.dispatchEvent(new window.Event('scroll')))
     assert.equal(document.querySelector('.lia-mathpath-tooltip')?.dataset.open, '0')
 
-    await flushDomWork()
+    await flushDomWork(window)
     assert.deepEqual(errors, [])
   }, { realObserver: true })
 })
+
+for (const legacyCaret of [false, true]) {
+  test(`drawing and input surfaces skip all glossary hit tests (${legacyCaret ? 'legacy' : 'modern'} caret)`, async () => {
+    let hitTesting
+    await withMathPath([
+      '<main><p>Ein Bruch im Kurs.</p><span data-lia-term="Bruch">Bruch</span></main>',
+      '<canvas></canvas><input><textarea></textarea><button><span>Stift</span></button>',
+      '<select><option>Bruch</option></select><div contenteditable="true"><span>Eingabe</span></div>'
+    ].join(''), ({ window, document, api }) => {
+      const paragraph = markElmOwned(document.querySelector('p'))
+      api.setGlossary([entry('Bruch')])
+      hitTesting.clearCaret()
+      hitTesting.resetCalls()
+
+      const surfaces = document.querySelectorAll('canvas, input, textarea, button span, select, [contenteditable] span')
+      for (const surface of surfaces) {
+        for (let move = 0; move < 24; move++) dispatchPointer(window, surface, 'pointermove')
+        assert.equal(dispatchPointer(window, surface, 'pointerdown').defaultPrevented, false)
+        assert.equal(dispatchPointer(window, surface, 'click').defaultPrevented, false)
+      }
+      assert.equal(hitTesting.caretPositionCalls, 0, 'excluded surfaces must not query caretPositionFromPoint')
+      assert.equal(hitTesting.caretRangeCalls, 0, 'excluded surfaces must not query legacy caretRangeFromPoint')
+      assert.equal(hitTesting.rangeRectCalls, 0, 'excluded surfaces must not test glossary range rectangles')
+
+      hitTesting.setCaret(paragraph.firstChild, 6)
+      dispatchPointer(window, paragraph, 'pointermove')
+      const tooltip = document.querySelector('.lia-mathpath-tooltip')
+      assert.equal(tooltip?.dataset.open, '1', 'course glossary hover still works')
+      hitTesting.resetCalls()
+      const canvas = document.querySelector('canvas')
+      dispatchPointer(window, canvas, 'pointermove')
+      assert.equal(tooltip.dataset.open, '0', 'moving from a virtual term onto canvas closes the hover')
+      assert.equal(hitTesting.caretPositionCalls + hitTesting.caretRangeCalls, 0)
+      assert.equal(hitTesting.rangeRectCalls, 0)
+
+      const explicitTerm = document.querySelector('main span')
+      explicitTerm.dispatchEvent(new window.MouseEvent('mouseenter'))
+      assert.equal(tooltip.dataset.open, '1')
+      dispatchPointer(window, canvas, 'pointermove')
+      assert.equal(tooltip.dataset.open, '0', 'canvas also closes a DOM-term hover without mouseleave')
+
+      for (const term of [paragraph, explicitTerm]) {
+        dispatchPointer(window, term, 'click')
+        assert.equal(tooltip.dataset.open, '1')
+        hitTesting.resetCalls()
+        dispatchPointer(window, canvas, 'pointermove')
+        assert.equal(tooltip.dataset.open, '1', 'canvas movement preserves a pinned tooltip')
+        assert.equal(dispatchPointer(window, canvas, 'click').defaultPrevented, false)
+        assert.equal(tooltip.dataset.open, '0', 'an outside canvas click dismisses the pin')
+        assert.equal(hitTesting.caretPositionCalls + hitTesting.caretRangeCalls, 0)
+        assert.equal(hitTesting.rangeRectCalls, 0)
+      }
+    }, {
+      beforeEval(window) {
+        hitTesting = installRangeHitTesting(window, { legacyCaret })
+      }
+    })
+  })
+}
+
+test('repeated drawing toolbar and bm-row state changes do not scan course text or rebuild highlights', async () => {
+  let hitTesting
+  await withMathPath([
+    '<main><p>Ein Bruch im Kurs.</p>',
+    '<div class="bm-row"><canvas></canvas><div role="toolbar"><button>Stift</button></div></div></main>'
+  ].join(''), async ({ window, document, api, errors }) => {
+    const paragraph = markElmOwned(document.querySelector('p'))
+    api.setGlossary([entry('Bruch'), entry('Summe')])
+    await flushDomWork(window)
+    const range = Array.from(hitTesting.highlightRegistry.get('lia-mathpath-glossary'))[0]
+    const walks = trackTextWalks(document)
+    hitTesting.resetCalls()
+
+    const row = document.querySelector('.bm-row')
+    const toolbar = document.querySelector('[role="toolbar"]')
+    const button = document.querySelector('button')
+    for (let batch = 0; batch < 3; batch++) {
+      for (let mutation = 0; mutation < 20; mutation++) {
+        row.className = `bm-row ${mutation % 2 ? 'bm-active' : 'bm-idle'}`
+        toolbar.className = `canvas-toolbar ${mutation % 2 ? 'writing' : 'ready'}`
+        button.className = mutation % 2 ? 'selected' : 'idle'
+        button.id = `pen-${batch}-${mutation}`
+        button.dataset.liaTerm = mutation % 2 ? 'Bruch' : 'Summe'
+      }
+      await flushDomWork(window)
+    }
+
+    walks.assertLocal()
+    assert.equal(walks.roots.length, 0, 'pure toolbar state changes need no glossary text walk')
+    assert.equal(hitTesting.highlightRegistrations, 0, 'layout state alone must preserve the existing Highlight')
+    assert.strictEqual(Array.from(hitTesting.highlightRegistry.get('lia-mathpath-glossary'))[0], range)
+    assert.strictEqual(paragraph.firstChild, range.startContainer)
+    assert.equal(button.classList.contains('lia-mathpath-glossary-highlight'), false)
+    assert.deepEqual(errors, [])
+  }, {
+    realObserver: true,
+    beforeEval(window) {
+      hitTesting = installRangeHitTesting(window)
+    }
+  })
+})
+
+test('coalesces successive text mutations into a local update while preserving untouched ranges', async () => {
+  let hitTesting
+  await withMathPath('<main><p id="changed">Ein Bruch entsteht.</p><p id="stable">Ein Bruch bleibt.</p></main>',
+    async ({ window, document, api }) => {
+      const changed = markElmOwned(document.querySelector('#changed'))
+      const stable = markElmOwned(document.querySelector('#stable'))
+      const text = changed.firstChild
+      api.setGlossary([entry('Bruch'), entry('Summe')])
+      await flushDomWork(window)
+      const stableRange = Array.from(hitTesting.highlightRegistry.get('lia-mathpath-glossary'))
+        .find(range => range.startContainer === stable.firstChild)
+      const walks = trackTextWalks(document)
+      hitTesting.resetCalls()
+
+      text.data = 'Eine Summe kommt.'
+      await Promise.resolve()
+      text.data = 'Eine Summe entsteht.'
+      await Promise.resolve()
+      assert.equal(hitTesting.highlightRegistrations, 0, 'separate mutation deliveries wait for the shared frame')
+      await flushDomWork(window)
+
+      walks.assertLocal()
+      assert.equal(walks.visited.includes(stable.firstChild), false, 'unchanged paragraphs must not be searched')
+      assert.equal(hitTesting.highlightRegistrations, 1, 'the batch publishes updated ranges once')
+      const ranges = Array.from(hitTesting.highlightRegistry.get('lia-mathpath-glossary'))
+      assert.equal(ranges.length, 2)
+      assert.strictEqual(ranges.find(range => range.startContainer === stable.firstChild), stableRange)
+      assert.strictEqual(changed.firstChild, text)
+      hitTesting.setCaret(text, 7)
+      dispatchPointer(window, changed, 'pointermove')
+      assert.equal(document.querySelector('.lia-mathpath-tooltip-title')?.textContent, 'Summe')
+    }, {
+      realObserver: true,
+      beforeEval(window) {
+        hitTesting = installRangeHitTesting(window)
+      }
+    })
+})
+
+test('indexes inserted course subtrees locally and updates semantic and generated term text', async () => {
+  let hitTesting
+  await withMathPath('<main><p id="stable">Ein Bruch bleibt.</p></main>', async ({ window, document, api }) => {
+    const stable = markElmOwned(document.querySelector('#stable'))
+    api.setGlossary([entry('Bruch'), entry('Summe')])
+    await flushDomWork(window)
+    const stableRange = Array.from(hitTesting.highlightRegistry.get('lia-mathpath-glossary'))[0]
+    const walks = trackTextWalks(document)
+
+    const subtree = document.createElement('section')
+    subtree.innerHTML = '<p class="elm">Eine Summe entsteht.</p><em>Bruch</em><p class="plain">Ein Bruch entsteht.</p>'
+    const elm = markElmOwned(subtree.querySelector('.elm'))
+    const semantic = markElmOwned(subtree.querySelector('em'))
+    const elmText = elm.firstChild
+    document.querySelector('main').append(subtree)
+    await flushDomWork(window)
+
+    walks.assertLocal()
+    assert.equal(walks.visited.includes(stable.firstChild), false)
+    assert.strictEqual(elm.firstChild, elmText)
+    assert.equal(semantic.dataset.liaTerm, 'Bruch')
+    const wrapper = subtree.querySelector('.plain [data-lia-mathpath-auto-term="wrapper"]')
+    assert.ok(wrapper, 'new unmanaged course text receives a glossary wrapper')
+    const registryRanges = Array.from(hitTesting.highlightRegistry.get('lia-mathpath-glossary'))
+    assert.ok(registryRanges.includes(stableRange), 'inserting content preserves unrelated virtual ranges')
+    hitTesting.setCaret(elmText, 7)
+    dispatchPointer(window, elm, 'pointermove')
+    assert.equal(document.querySelector('.lia-mathpath-tooltip-title')?.textContent, 'Summe')
+
+    walks.reset()
+    semantic.firstChild.data = 'Summe'
+    wrapper.firstChild.data = 'Summe'
+    await flushDomWork(window)
+    walks.assertLocal()
+    assert.equal(walks.visited.includes(stable.firstChild), false)
+    for (const term of [semantic, wrapper]) {
+      assert.equal(term.dataset.liaTerm, 'Summe', 'changed automatic text must use the new canonical term')
+      term.dispatchEvent(new window.MouseEvent('mouseenter'))
+      assert.equal(document.querySelector('.lia-mathpath-tooltip-title')?.textContent, 'Summe')
+    }
+
+    semantic.firstChild.data = 'Kein Fachwort'
+    wrapper.firstChild.data = 'Kein Fachwort'
+    await flushDomWork(window)
+    assert.equal(semantic.hasAttribute('data-lia-term'), false)
+    assert.equal(subtree.querySelector('.plain [data-lia-term]'), null)
+    walks.assertLocal()
+  }, {
+    realObserver: true,
+    beforeEval(window) {
+      hitTesting = installRangeHitTesting(window)
+    }
+  })
+})
+
+test('updates explicit data-lia-term attributes locally and keeps hover and pin interactions active', async () => {
+  await withMathPath('<main><span id="term">Anteil</span><p>Ein Bruch bleibt.</p></main>',
+    async ({ window, document, api }) => {
+      api.setGlossary([entry('Bruch'), entry('Summe')])
+      await flushDomWork(window)
+      const term = document.querySelector('#term')
+      const walks = trackTextWalks(document)
+      term.dataset.liaTerm = 'Bruch'
+      await flushDomWork(window)
+      walks.assertLocal()
+      term.dispatchEvent(new window.MouseEvent('mouseenter'))
+      const tooltip = document.querySelector('.lia-mathpath-tooltip')
+      assert.equal(tooltip?.querySelector('.lia-mathpath-tooltip-title')?.textContent, 'Bruch')
+
+      term.dataset.liaTerm = 'Summe'
+      await flushDomWork(window)
+      term.dispatchEvent(new window.MouseEvent('mouseenter'))
+      assert.equal(tooltip?.querySelector('.lia-mathpath-tooltip-title')?.textContent, 'Summe')
+      dispatchPointer(window, term, 'click')
+      term.dispatchEvent(new window.MouseEvent('mouseleave'))
+      assert.equal(tooltip?.dataset.open, '1')
+      dispatchPointer(window, document.body, 'click', { x: 300, y: 200 })
+      assert.equal(tooltip?.dataset.open, '0')
+      walks.assertLocal()
+    }, { realObserver: true })
+})
+
+test('changing a container id into and out of the navigation exclusion updates only that subtree', async () => {
+  let hitTesting
+  await withMathPath('<main><section><p>Ein Bruch entsteht.</p></section><p id="stable">Ein Bruch bleibt.</p></main>',
+    async ({ window, document, api }) => {
+      const section = markElmOwned(document.querySelector('section'))
+      const paragraph = section.querySelector('p')
+      const stable = markElmOwned(document.querySelector('#stable'))
+      api.setGlossary([entry('Bruch')])
+      await flushDomWork(window)
+      const stableRange = Array.from(hitTesting.highlightRegistry.get('lia-mathpath-glossary'))
+        .find(range => range.startContainer === stable.firstChild)
+      const walks = trackTextWalks(document)
+      hitTesting.setCaret(paragraph.firstChild, 6)
+      dispatchPointer(window, paragraph, 'click')
+      const tooltip = document.querySelector('.lia-mathpath-tooltip')
+      assert.equal(tooltip?.dataset.open, '1')
+
+      section.id = 'lia-bm-toc5'
+      await flushDomWork(window)
+      assert.equal(tooltip?.dataset.open, '0', 'entering the excluded context dismisses a pinned term')
+      assert.deepEqual(Array.from(hitTesting.highlightRegistry.get('lia-mathpath-glossary')), [stableRange])
+      section.id = 'course-details'
+      await flushDomWork(window)
+      const ranges = Array.from(hitTesting.highlightRegistry.get('lia-mathpath-glossary'))
+      assert.equal(ranges.length, 2)
+      assert.ok(ranges.includes(stableRange))
+      dispatchPointer(window, paragraph, 'pointermove')
+      assert.equal(tooltip?.dataset.open, '1', 'leaving the excluded context restores the term')
+      walks.assertLocal()
+      assert.equal(walks.visited.includes(stable.firstChild), false)
+    }, {
+      realObserver: true,
+      beforeEval(window) {
+        hitTesting = installRangeHitTesting(window)
+      }
+    })
+})
+
+for (const visibilityAttribute of ['class', 'style', 'hidden']) {
+  test(`slide ${visibilityAttribute} changes and resize repaint fallback ranges without rescanning text`, async () => {
+    let hitTesting
+    await withMathPath('<section class="lia-slide__content"><p>Ein Bruch entsteht.</p></section>',
+      async ({ window, document, api, errors }) => {
+        const section = markElmOwned(document.querySelector('section'))
+        const paragraph = section.querySelector('p')
+        api.setGlossary([entry('Bruch')])
+        await flushDomWork(window)
+        const walks = trackTextWalks(document)
+        hitTesting.setCaret(paragraph.firstChild, 6)
+        dispatchPointer(window, paragraph, 'click')
+        const tooltip = document.querySelector('.lia-mathpath-tooltip')
+        assert.equal(tooltip?.dataset.open, '1')
+        assert.ok(document.querySelector('.lia-mathpath-range-rect'))
+
+        // jsdom has no layout engine; the Range stub models the hidden slide geometry.
+        section.dataset.testHidden = '1'
+        if (visibilityAttribute === 'hidden') section.hidden = true
+        if (visibilityAttribute === 'style') section.style.display = 'none'
+        if (visibilityAttribute === 'class') section.classList.add('slide-hidden')
+        await flushDomWork(window)
+        assert.equal(tooltip?.dataset.open, '0', 'a pin on the hidden slide must close')
+        assert.equal(document.querySelector('.lia-mathpath-range-rect'), null)
+
+        section.dataset.testHidden = '0'
+        if (visibilityAttribute === 'hidden') section.hidden = false
+        if (visibilityAttribute === 'style') section.style.display = ''
+        if (visibilityAttribute === 'class') section.classList.remove('slide-hidden')
+        await flushDomWork(window)
+        assert.ok(document.querySelector('.lia-mathpath-range-rect'), 'returning to the slide restores range markers')
+        dispatchPointer(window, paragraph, 'click')
+        assert.equal(tooltip?.dataset.open, '1')
+        Object.assign(hitTesting.rect, { x: 90, y: 60, left: 90, top: 60, right: 230, bottom: 84 })
+        window.dispatchEvent(new window.Event('resize'))
+        await flushDomWork(window)
+        assert.equal(document.querySelector('.lia-mathpath-range-rect')?.style.left, '90px')
+        assert.equal(document.querySelector('.lia-mathpath-range-rect')?.style.top, '60px')
+        assert.equal(tooltip?.style.left, '90px')
+        assert.equal(tooltip?.style.top, '50px')
+        walks.assertLocal()
+        assert.equal(walks.roots.length, 0, 'visibility and size updates need geometry refresh only')
+        assert.deepEqual(errors, [])
+      }, {
+        realObserver: true,
+        beforeEval(window) {
+          hitTesting = installRangeHitTesting(window, { cssHighlights: false })
+        }
+      })
+  })
+}
+test('removing the glossary text from a pinned semantic term closes its tooltip immediately', async () => {
+  await withMathPath('<main><em>Bruch</em></main>', async ({ window, document, api }) => {
+    const term = markElmOwned(document.querySelector('em'))
+    api.setGlossary([entry('Bruch')])
+    await flushDomWork(window)
+    dispatchPointer(window, term, 'click')
+    const tooltip = document.querySelector('.lia-mathpath-tooltip')
+    assert.equal(tooltip?.dataset.open, '1')
+
+    term.firstChild.data = 'Kein Fachwort'
+    await flushDomWork(window)
+    assert.equal(term.hasAttribute('data-lia-term'), false)
+    assert.equal(tooltip?.dataset.open, '0', 'the removed term must not leave a pinned explanation behind')
+    term.dispatchEvent(new window.MouseEvent('mouseenter'))
+    assert.equal(tooltip?.dataset.open, '0')
+  }, { realObserver: true })
+})
+
+for (const visibilityAttribute of ['hidden', 'style']) {
+  test(`a pinned explicit term closes when its slide ancestor becomes ${visibilityAttribute}`, async () => {
+    await withMathPath('<section><span data-lia-term="Bruch">Bruch</span></section>',
+      async ({ window, document, api }) => {
+        const slide = document.querySelector('section')
+        const term = slide.querySelector('span')
+        api.setGlossary([entry('Bruch')])
+        await flushDomWork(window)
+        dispatchPointer(window, term, 'click')
+        const tooltip = document.querySelector('.lia-mathpath-tooltip')
+        assert.equal(tooltip?.dataset.open, '1')
+
+        if (visibilityAttribute === 'hidden') slide.hidden = true
+        else slide.style.display = 'none'
+        await flushDomWork(window)
+        assert.equal(tooltip?.dataset.open, '0')
+
+        if (visibilityAttribute === 'hidden') slide.hidden = false
+        else slide.style.display = ''
+        await flushDomWork(window)
+        term.dispatchEvent(new window.MouseEvent('mouseenter'))
+        assert.equal(tooltip?.dataset.open, '1', 'returning to the slide restores explicit-term hover')
+      }, { realObserver: true })
+  })
+}
+
+test('discovers inserted glossary entries and changed table explanations, including pure child removal', async () => {
+  await withMathPath('<main><p>Ein Bruch und eine Summe.</p></main>', async ({ window, document, api }) => {
+    const table = document.createElement('table')
+    table.innerHTML = '<thead><tr><th>Begriff</th><th>Erklaerung</th></tr></thead>' +
+      '<tbody><tr><td>Bruch</td><td id="explanation">Grundteil<span id="extra"> mit Zusatz</span></td></tr></tbody>'
+    document.body.append(table)
+    await flushDomWork(window)
+    assert.equal(api.getGlossary('Bruch')?.explanation, 'Grundteil mit Zusatz')
+
+    document.querySelector('#extra').remove()
+    await flushDomWork(window)
+    assert.equal(api.getGlossary('Bruch')?.explanation, 'Grundteil', 'removing only a child must update the table definition')
+
+    document.querySelector('#explanation').firstChild.data = 'Neuer Grundteil'
+    await flushDomWork(window)
+    assert.equal(api.getGlossary('Bruch')?.explanation, 'Neuer Grundteil')
+
+    const row = document.createElement('tr')
+    row.innerHTML = '<td>Summe</td><td>Ergebnis der Addition</td>'
+    table.querySelector('tbody').append(row)
+    await flushDomWork(window)
+    assert.equal(api.getGlossary('Summe')?.explanation, 'Ergebnis der Addition')
+    const term = document.querySelector('main [data-lia-term="Summe"]')
+    assert.ok(term, 'a new table entry activates its existing occurrence in the course')
+    term.dispatchEvent(new window.MouseEvent('mouseenter'))
+    assert.equal(document.querySelector('.lia-mathpath-tooltip-title')?.textContent, 'Summe')
+  }, { realObserver: true })
+})
+for (const visibilityAttribute of ['visibility', 'aria-hidden']) {
+  test(`a pinned virtual term closes for slide ${visibilityAttribute} even if its range retains geometry`, async () => {
+    let hitTesting
+    await withMathPath('<section><p>Ein Bruch entsteht.</p></section>', async ({ window, document, api }) => {
+      const slide = markElmOwned(document.querySelector('section'))
+      const paragraph = slide.querySelector('p')
+      const text = paragraph.firstChild
+      api.setGlossary([entry('Bruch')])
+      await flushDomWork(window)
+      const walks = trackTextWalks(document)
+      hitTesting.setCaret(text, 6)
+      dispatchPointer(window, paragraph, 'click')
+      const tooltip = document.querySelector('.lia-mathpath-tooltip')
+      assert.equal(tooltip?.dataset.open, '1')
+
+      if (visibilityAttribute === 'visibility') slide.style.visibility = 'hidden'
+      else slide.setAttribute('aria-hidden', 'true')
+      await flushDomWork(window)
+      assert.equal(tooltip?.dataset.open, '0', 'hidden slides cannot keep their virtual tooltip pinned')
+      assert.strictEqual(paragraph.firstChild, text)
+
+      if (visibilityAttribute === 'visibility') slide.style.visibility = ''
+      else slide.removeAttribute('aria-hidden')
+      await flushDomWork(window)
+      dispatchPointer(window, paragraph, 'pointermove')
+      assert.equal(tooltip?.dataset.open, '1')
+      walks.assertLocal()
+      assert.equal(walks.roots.length, 0, 'visibility changes should refresh geometry without rematching text')
+    }, {
+      realObserver: true,
+      beforeEval(window) {
+        hitTesting = installRangeHitTesting(window)
+      }
+    })
+  })
+}
