@@ -102,7 +102,11 @@ async function recommend(page, hostIndex = 0) {
   const host = page.locator(hostSelector).nth(hostIndex)
   const button = host.getByRole('button', { name: buttonText, exact: true })
   await expect(button).toBeVisible()
-  await button.click()
+  // The second fixture instance can sit below LiaScript's transient evaluation
+  // layer. Keyboard activation still exercises the real accessible button and
+  // avoids turning that unrelated overlay animation into a pointer-test flake.
+  if (hostIndex > 0) await button.press('Enter')
+  else await button.click()
   await expect(button).toBeEnabled()
   const report = await host.evaluate(element => element.report)
   if (!report) throw new Error('Lernpfad returned no report: ' + await host.locator('.summary').textContent())
@@ -172,6 +176,7 @@ async function verifyUi(page, report) {
   const desktop = await host.evaluate(element => {
     const root = element.shadowRoot
     const create = root.querySelector('button.create')
+    const open = root.querySelector('button.open-course')
     const offers = root.querySelector('.offers')
     const warning = root.querySelector('.warnings')
     const styles = getComputedStyle(create)
@@ -181,7 +186,9 @@ async function verifyUi(page, report) {
       buttonWidth: create.getBoundingClientRect().width,
       hostWidth: element.getBoundingClientRect().width,
       columns: getComputedStyle(offers).gridTemplateColumns.split(/\s+/).filter(Boolean).length,
-      warningBeforeOffers: !!(warning.compareDocumentPosition(offers) & Node.DOCUMENT_POSITION_FOLLOWING)
+      warningBeforeOffers: !!(warning.compareDocumentPosition(offers) & Node.DOCUMENT_POSITION_FOLLOWING),
+      openButtonColor: getComputedStyle(open).color,
+      openButtonBackground: getComputedStyle(open).backgroundColor
     }
   })
   assert.equal(desktop.fontSize, '16px')
@@ -189,6 +196,7 @@ async function verifyUi(page, report) {
   assert.ok(desktop.buttonWidth < desktop.hostWidth, JSON.stringify(desktop))
   assert.equal(desktop.columns, 3)
   assert.equal(desktop.warningBeforeOffers, true)
+  assert.ok(contrastRatio(desktop.openButtonColor, desktop.openButtonBackground) >= 4.5, JSON.stringify(desktop))
 
   const dark = await host.evaluate(element => {
     const root = element.shadowRoot
@@ -201,17 +209,21 @@ async function verifyUi(page, report) {
     for (const [name, value] of Object.entries(properties)) element.style.setProperty(name, value)
     const select = root.querySelector('select')
     const create = root.querySelector('button.create')
+    const open = root.querySelector('button.open-course')
     const result = {
       selectColor: getComputedStyle(select).color,
       selectBackground: getComputedStyle(select).backgroundColor,
       buttonColor: getComputedStyle(create).color,
-      buttonBackground: getComputedStyle(create).backgroundColor
+      buttonBackground: getComputedStyle(create).backgroundColor,
+      openButtonColor: getComputedStyle(open).color,
+      openButtonBackground: getComputedStyle(open).backgroundColor
     }
     for (const name of Object.keys(properties)) element.style.removeProperty(name)
     return result
   })
   assert.ok(contrastRatio(dark.selectColor, dark.selectBackground) >= 4.5, JSON.stringify(dark))
   assert.ok(contrastRatio(dark.buttonColor, dark.buttonBackground) >= 4.5, JSON.stringify(dark))
+  assert.ok(contrastRatio(dark.openButtonColor, dark.openButtonBackground) >= 4.5, JSON.stringify(dark))
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))

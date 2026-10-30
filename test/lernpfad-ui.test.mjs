@@ -74,6 +74,8 @@ test('renders a compact token-based LiaScript interface with responsive and acce
     assert.match(style, /--lia-mathpath-accent-rgb/)
     assert.match(style, /--lia-mathpath-surface-rgb/)
     assert.match(style, /--lia-mathpath-text-rgb/)
+    assert.match(style, /\.open-course\{[\s\S]*background:var\(--_surface\);[\s\S]*color:var\(--_text\)/)
+    assert.match(style, /\.open-course:hover:not\(:disabled\)\{[\s\S]*background:var\(--_accent\);[\s\S]*color:var\(--_accent-contrast\)/)
     assert.doesNotMatch(style, /--lia-background-color|border:1px solid currentColor/)
     assert.match(style, /@media\(max-width:42em\)/)
     assert.match(style, /@media\(prefers-reduced-motion:reduce\)/)

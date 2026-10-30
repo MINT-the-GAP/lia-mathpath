@@ -200,8 +200,9 @@ select{
   margin-top:1em;
   padding:.58em .85em;
   border:1px solid var(--_accent);
-  background:transparent;
-  color:var(--_accent);
+  background:var(--_surface);
+  color:var(--_text);
+  box-shadow:0 1px 2px rgba(var(--lia-mathpath-text-rgb,35,40,44),.12);
 }
 .open-course:hover:not(:disabled){
   background:var(--_accent);
