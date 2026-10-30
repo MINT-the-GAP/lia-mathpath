@@ -7,7 +7,12 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { bundleFilenameForVersion } from './version-bundle.mjs'
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const mathPathBundleFilename = bundleFilenameForVersion(
+  JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).version
+)
 const freezeRoot = process.env.MATHPATH_FREEZE_ROOT || path.resolve(root, '../Freeze/lia-freeze-v2')
 const resetterRoot = process.env.MATHPATH_RESETTER_ROOT || path.resolve(root, '../Resetter')
 const base = 'https://raw.githubusercontent.com/MINT-the-GAP/'
@@ -64,7 +69,8 @@ async function routeResources(page, name, served, holdFreeze = name === 'freeze-
   const resources = new Map([[courseUrl, { body: courseSource(name), contentType: 'text/markdown; charset=utf-8' }]])
   const definitions = [
     [mathPathUrl, path.join(root, 'README.md')],
-    [base + 'lia-mathpath/master/dist/index.js', path.join(root, 'dist/index.js')],
+    [base + 'lia-mathpath/master/dist/' + mathPathBundleFilename,
+      path.join(root, 'dist', mathPathBundleFilename)],
     [base + 'lia-mathpath/master/Explain.md', path.join(root, 'Explain.md')],
     [base + 'lia-mathpath/master/Glossar.md', path.join(root, 'Glossar.md')],
     [resetterUrl, path.join(resetterRoot, 'README.md')],

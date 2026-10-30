@@ -1,10 +1,10 @@
 <!--
 author:   MINT-the-GAP; Martin Lommatzsch
-version:  0.0.17
+version:  0.0.18
 language: de
 edit:     true
 comment:  LiaScript plugin for reusable math path components.
-script:   ./dist/index.js
+script:   ./dist/index.v0x0x18.js
 
 
 @Explain: <lia-mathpath-explain data-lia-explain-topic="@0"></lia-mathpath-explain>
@@ -44,16 +44,20 @@ Dieses Repository bildet die technische Basis für den schrittweisen Aufbau von 
 
 
 ``` markdown
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.18
 ```
 
 
 Der Fokus der ersten Ausbaustufe liegt auf einer stabilen Repo-Struktur (TypeScript Quellcode,
-Parcel Build nach `dist/index.js`, importierbare LiaScript README).
+Parcel Build nach `dist/index.js`, importierbare LiaScript README). Der Build erzeugt zusätzlich
+das byteidentische Release-Bundle `dist/index.v0x0x18.js`, das diese README ohne Query-Parameter
+lädt. Der versionsgebundene Dateiname verhindert, dass ein bereits zwischengespeichertes Bundle
+nach einem Release weiterverwendet wird; `dist/index.js` bleibt für Entwicklung und bestehende
+direkte Einbindungen erhalten.
 
 
 __Try it on LiaScript:__
-https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md
+https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.18
 
 
 **Live-Test: manuell und außerhalb eines Hints**
@@ -66,7 +70,7 @@ Für ein manuell gesetztes Explain-Thema muss MathPath direkt im einzigen
 LiaScript-Hauptkopf des verwendenden Kurses importiert werden:
 
 ```markdown
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.18
 ```
 
 Auch das automatische Thema aus `@ADetails` funktioniert mit MathPath allein.
@@ -76,7 +80,7 @@ Template-Imports sollte man sich nicht verlassen.
 
 ```markdown
 import: https://raw.githubusercontent.com/MINT-the-GAP/lia-freeze-v2/main/README.md
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.18
 ```
 
 Nach dem MathPath-Import stehen `@ADetails`, `@Explain` und `@tooltip` zur Verfügung.
@@ -190,7 +194,7 @@ Bruchrechnung: [[  Test  ]]
 Ab MathPath **0.0.10** genügt dieser direkte Import im Kurskopf:
 
 ```markdown
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.18
 ```
 
 `@ADetails` steht mit einer Leerzeile nach dem zugehörigen Quiz. MathPath zeigt
@@ -238,7 +242,7 @@ gemeinsamen `@ADetails`-Definition voraus. Beide aktualisierten Vorlagen müssen
 veröffentlicht beziehungsweise im lokalen Test gemeinsam verwendet werden.
 
 ```markdown
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.18
 import: https://raw.githubusercontent.com/MINT-the-GAP/lia-freeze-v2/main/README.md
 ```
 
@@ -323,7 +327,7 @@ version: 1.0.0
 language: de
 mode: Presentation
 lernpfad-level: Einsteiger
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.18
 -->
 
 # Mein Lernpfad
@@ -405,7 +409,7 @@ versionierte Browser-Schnittstelle der Aufgabensammlung:
 
 - `assets/course-catalog.js` mit Schema `schullia-course-catalog`, Version 1,
 - `assets/course-generator.js` mit Schema `schullia-course-generator`,
-  Version 1 beziehungsweise Release 1.0.4,
+  Version 1 beziehungsweise Release 1.0.5,
 - `assets/course-source.js` für den gemeinsamen Markdown-Aufbau.
 
 Die `index.html` der Aufgabensammlung und `@Lernpfad` rufen dieselben
@@ -452,7 +456,7 @@ folgt der Tutorial-Hinweis aus den Wochenaufgaben mit einem Link zum zentralen
 LiaScript-Tutorial. Erst anschließend beginnen die vier ausgewählten Aufgaben.
 
 Geöffnet wird zunächst ein Link der Form
-`https://mint-the-gap.github.io/Aufgabensammlung/course.html?v=1.0.4#course=…`.
+`https://mint-the-gap.github.io/Aufgabensammlung/course.html?v=1.0.5#course=…`.
 Der Hash enthält ausschließlich das strukturierte Manifest mit vier öffentlichen
 Aufgaben-URLs, Thema, Angebot und Niveau. Der dortige Launcher lädt diese
 öffentlichen Quellen, baut denselben Markdown mit `mode: Presentation`, packt

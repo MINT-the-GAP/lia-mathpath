@@ -11,7 +11,12 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
 
+import { bundleFilenameForVersion } from './version-bundle.mjs'
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const mathPathBundleFilename = bundleFilenameForVersion(
+  JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).version
+)
 const sharedCandidates = [
   path.resolve(root, '..', 'Aufgabensammlung'),
   path.join(os.homedir(), 'Desktop', 'Aufgabensammlung')
@@ -117,11 +122,13 @@ async function loadResources() {
     [pagesBase + 'assets/vendor/fflate-0.8.2.min.js',
       path.join(sharedRoot, 'assets/vendor/fflate-0.8.2.min.js')],
     [mathPathUrl, path.join(root, 'README.md')],
-    [rawBase + 'lia-mathpath/refs/heads/master/dist/index.js', path.join(root, 'dist/index.js')],
+    [rawBase + 'lia-mathpath/refs/heads/master/dist/' + mathPathBundleFilename,
+      path.join(root, 'dist', mathPathBundleFilename)],
     [rawBase + 'lia-mathpath/refs/heads/master/Explain.md', path.join(root, 'Explain.md')],
     [rawBase + 'lia-mathpath/refs/heads/master/Glossar.md', path.join(root, 'Glossar.md')],
     [rawBase + 'lia-mathpath/master/README.md', path.join(root, 'README.md')],
-    [rawBase + 'lia-mathpath/master/dist/index.js', path.join(root, 'dist/index.js')],
+    [rawBase + 'lia-mathpath/master/dist/' + mathPathBundleFilename,
+      path.join(root, 'dist', mathPathBundleFilename)],
     [rawBase + 'lia-mathpath/master/Explain.md', path.join(root, 'Explain.md')],
     [rawBase + 'lia-mathpath/master/Glossar.md', path.join(root, 'Glossar.md')]
   ]
@@ -326,7 +333,7 @@ async function run() {
     )
     assert.equal(manifest.urls.length, 4)
     assert.equal(new Set(manifest.urls).size, 4)
-    assert.equal(openingUrl.search, '?v=1.0.4')
+    assert.equal(openingUrl.search, '?v=1.0.5')
     const openCalls = await page.evaluate(() => window.__MATHPATH_OPEN_CALLS__)
     assert.equal(openCalls.length, 1)
     assert.deepEqual(openCalls[0], {
@@ -374,7 +381,7 @@ async function run() {
     const intro = source.body.slice(0, source.body.indexOf('# BROWSER_TASK_'))
     assert.equal(count(intro, /^---$/gm), 8)
     assert.equal(count(source.body,
-      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md$/gm), 1)
+      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.18$/gm), 1)
     assert.doesNotMatch(source.body, /lia-freeze|FreezeREADME|@Abgabe|@Auswertung/i)
     assert.equal(count(source.body, /^mode:\s*Presentation$/gm), 1)
     assert.doesNotMatch(source.body, /^mode:\s*Textbook$/m)

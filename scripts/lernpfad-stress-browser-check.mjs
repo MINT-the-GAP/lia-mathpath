@@ -11,7 +11,12 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
 
+import { bundleFilenameForVersion } from './version-bundle.mjs'
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const mathPathBundleFilename = bundleFilenameForVersion(
+  JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).version
+)
 const freezeRoot = process.env.MATHPATH_FREEZE_ROOT ||
   path.resolve(root, '../Freeze/lia-freeze-v2')
 const resetterRoot = process.env.MATHPATH_RESETTER_ROOT ||
@@ -45,7 +50,7 @@ const pagesBase = 'https://mint-the-gap.github.io/Aufgabensammlung/'
 const mathPathUrl = rawBase +
   'lia-mathpath/refs/heads/master/README.md'
 const mathPathDistUrl = rawBase +
-  'lia-mathpath/refs/heads/master/dist/index.js'
+  'lia-mathpath/refs/heads/master/dist/' + mathPathBundleFilename
 const freezeUrl = rawBase + 'lia-freeze-v2/main/README.md'
 const freezeDistUrl = rawBase + 'lia-freeze-v2/main/dist/index.js'
 const resetterUrl = rawBase + 'lia-resetter/main/README.md'
@@ -167,15 +172,15 @@ async function installRoutes(context, name, result) {
   })
   const definitions = [
     [mathPathUrl, path.join(root, 'README.md')],
-    [mathPathDistUrl, path.join(root, 'dist/index.js')],
+    [mathPathDistUrl, path.join(root, 'dist', mathPathBundleFilename)],
     [rawBase + 'lia-mathpath/refs/heads/master/Explain.md',
       path.join(root, 'Explain.md')],
     [rawBase + 'lia-mathpath/refs/heads/master/Glossar.md',
       path.join(root, 'Glossar.md')],
     [rawBase + 'lia-mathpath/master/README.md',
       path.join(root, 'README.md')],
-    [rawBase + 'lia-mathpath/master/dist/index.js',
-      path.join(root, 'dist/index.js')],
+    [rawBase + 'lia-mathpath/master/dist/' + mathPathBundleFilename,
+      path.join(root, 'dist', mathPathBundleFilename)],
     [rawBase + 'lia-mathpath/master/Explain.md',
       path.join(root, 'Explain.md')],
     [rawBase + 'lia-mathpath/master/Glossar.md',
@@ -336,16 +341,16 @@ async function stressPublicApi(page, host, perOffer) {
     assert.doesNotMatch(course.markdown,
       /lia-freeze|FreezeREADME|@Abgabe|@Auswertung/i)
     assert.equal(count(course.markdown,
-      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md$/gm), 1)
+      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.18$/gm), 1)
     assert.equal(count(course.markdown, /^@Lernpfad$/gm), 1)
     assert.match(course.openingTarget,
-      /^https:\/\/mint-the-gap\.github\.io\/Aufgabensammlung\/course\.html\?v=1\.0\.4#course=/)
+      /^https:\/\/mint-the-gap\.github\.io\/Aufgabensammlung\/course\.html\?v=1\.0\.5#course=/)
   }
 
   const sharedScripts = await page.evaluate(prefix =>
     [...document.scripts].map(script => script.src)
       .filter(src => src.startsWith(prefix) &&
-        /\/assets\/course-(?:source|generator|catalog)\.js\?v=1\.0\.4$/.test(src)),
+        /\/assets\/course-(?:source|generator|catalog)\.js\?v=1\.0\.5$/.test(src)),
   pagesBase)
   assert.equal(sharedScripts.length, 3)
   assert.equal(new Set(sharedScripts).size, 3)
@@ -370,7 +375,7 @@ async function inspectOpenedCourse(popup) {
   assert.doesNotMatch(source.body,
     /lia-freeze|FreezeREADME|@Abgabe|@Auswertung/i)
   assert.equal(count(source.body,
-    /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md$/gm), 1)
+    /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.18$/gm), 1)
   assert.equal(count(source.body, /^@Lernpfad$/gm), 1)
   assert.equal(count(source.body, /^# STRESS_TASK_\d+$/gm), 4)
   assert.equal(count(source.body, /^mode:\s*Presentation$/gm), 1)
@@ -408,7 +413,7 @@ async function openOffer(context, page, host, type, inspectCourse) {
   assert.equal(manifest.level, expected.manifestLevel)
   assert.equal(manifest.urls.length, 4)
   assert.equal(new Set(manifest.urls).size, 4)
-  assert.equal(openingUrl.search, '?v=1.0.4')
+  assert.equal(openingUrl.search, '?v=1.0.5')
 
   await page.waitForTimeout(150)
   const calls = await page.evaluate(() =>

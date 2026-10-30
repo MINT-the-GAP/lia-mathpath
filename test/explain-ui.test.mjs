@@ -91,11 +91,6 @@ test('README defines the tooltip macro as an invisible idempotent API call', () 
   )
 })
 
-test('README uses a local DevServer-compatible bundle URL without a query string', () => {
-  assert.match(readmeSource, /^script:\s+\.\/dist\/index\.js$/m)
-  assert.doesNotMatch(readmeSource, /^script:.*\?/m)
-})
-
 test('README places one plain live @Explain(Tutorial) on its first slide', () => {
   const firstSlide = readmeSource.split(/\r?\n# Glossarbegriffe sicher verwenden/)[0]
   const liveCalls = firstSlide.match(/^@Explain\(Tutorial\)$/gm) || []

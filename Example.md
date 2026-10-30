@@ -8,7 +8,7 @@ mode: Presentation
 lernpfad-level: Einsteiger
 
 import: https://raw.githubusercontent.com/MINT-the-GAP/lia-freeze-v2/main/README.md
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.18
 import: https://raw.githubusercontent.com/MINT-the-GAP/lia-resetter/main/README.md
 -->
 

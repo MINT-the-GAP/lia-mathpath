@@ -564,7 +564,7 @@ function overrideNameForUrl(requestUrl) {
   if (!lower.includes('/mint-the-gap/lia-mathpath')) return null
   if (/\/test\/fixtures\/import-consumer\.md$/i.test(pathname)) return 'import-consumer.md'
   if (/\/readme\.md$/i.test(pathname)) return 'README.md'
-  if (/\/dist\/index\.js$/i.test(pathname)) return 'dist/index.js'
+  if (/\/dist\/index(?:\.[a-z0-9]+)?\.js$/i.test(pathname)) return 'dist/index.js'
   if (/\/glossar\.md$/i.test(pathname)) return 'Glossar.md'
   if (/\/explain\.md$/i.test(pathname)) return 'Explain.md'
   return null
