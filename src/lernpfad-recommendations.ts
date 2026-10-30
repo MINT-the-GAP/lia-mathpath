@@ -13,10 +13,10 @@ export function selectLearningRecommendation(
   const base = { type, topic: topic?.topic ?? null, taskCount: 4 as const };
   if (type === 'weakness' && (phase === 'collect' || phase === 'grading')) {
     return { ...base, topic: null, targetLevel: 'Einsteiger', available: false,
-      reason: 'Empfehlungen zu Schwächen stehen nach der freigegebenen Auswertung zur Verfügung.' };
+      reason: 'Empfehlungen zum Wiederholen von Grundlagen stehen nach der freigegebenen Auswertung zur Verfügung.' };
   }
   if (!topic) return { ...base, targetLevel: type === 'weakness' ? 'Einsteiger' : null, available: false,
-    reason: type === 'weakness' ? 'Keine auswertbaren Schwächen oder unbearbeiteten Aufgaben gefunden.' : 'Es sind keine Aufgabenthemen verfügbar.' };
+    reason: type === 'weakness' ? 'Keine falschen, teilweise richtigen oder nachweislich unbearbeiteten Aufgaben gefunden.' : 'Es sind keine Aufgabenthemen verfügbar.' };
   if (type === 'weakness') return { ...base, targetLevel: 'Einsteiger', available: true,
     reason: `${topic.weaknessCount} Aufgaben sind falsch, teilweise richtig oder nachweislich unbearbeitet. Jede Aufgabe zählt einmal pro Thema.` };
   if (!topic.level) return { ...base, targetLevel: null, available: false,

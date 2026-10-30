@@ -298,7 +298,7 @@ async function run() {
     )
     assert.equal(manifest.urls.length, 4)
     assert.equal(new Set(manifest.urls).size, 4)
-    assert.equal(openingUrl.search, '?v=1.0.3')
+    assert.equal(openingUrl.search, '?v=1.0.4')
     const openCalls = await page.evaluate(() => window.__MATHPATH_OPEN_CALLS__)
     assert.equal(openCalls.length, 1)
     assert.deepEqual(openCalls[0], {
@@ -337,6 +337,12 @@ async function run() {
     assert.match(source.body, /points=0;tags=Grundrechenarten, Browser-Tag/)
     assert.match(source.body, /points=1,5;tags=Grundrechenarten, Browser-Tag/)
     assert.match(source.body, /# Dein weiterer Lernpfad/)
+    assert.match(source.body, /^# Weitere Übungen: Grundrechenarten$/m)
+    assert.match(source.body,
+      /> Hier findest du vier weitere Aufgaben zum gleichen Thema auf deinem bisherigen Schwierigkeitsniveau\./)
+    assert.match(source.body, /> \[!CAUTION\]\n> <h2>\[Tutorial öffnen\]\(https:\/\/liascript\.github\.io\/course\/\?https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/Aufgabensammlung\/refs\/heads\/main\/Repetitorium\/Erklaerungen\/00_00_00_Tutorial\.md\)<\/h2>/)
+    const intro = source.body.slice(0, source.body.indexOf('# BROWSER_TASK_'))
+    assert.equal(count(intro, /^---$/gm), 8)
     assert.equal(count(source.body,
       /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md$/gm), 1)
     assert.doesNotMatch(source.body, /lia-freeze|FreezeREADME|@Abgabe|@Auswertung/i)

@@ -1,6 +1,6 @@
 <!--
 author:   MINT-the-GAP; Martin Lommatzsch
-version:  0.0.15
+version:  0.0.16
 language: de
 edit:     true
 comment:  LiaScript plugin for reusable math path components.
@@ -371,13 +371,13 @@ eines freigegebenen Freeze-Links nutzbar.
 
 | Angebot | Themenreihenfolge | Zielniveau |
 | --- | --- | --- |
-| Schwächen üben | Anzahl aktuell falscher, teilweise richtiger und nachweislich unbearbeiteter Aufgaben | Einsteiger |
+| Grundlagen wiederholen | Anzahl aktuell falscher, teilweise richtiger und nachweislich unbearbeiteter Aufgaben | Einsteiger |
 | Weitere Übungen | Themenhäufigkeit im gesamten Ausgangskurs | Häufigstes ausdrücklich angegebenes Niveau des ausgewählten Themas |
 | Vertiefungen | Themenhäufigkeit im gesamten Ausgangskurs | Eine Stufe über dem bisherigen Niveau |
 
 Falsch, teilweise richtig und unbearbeitet zählen jeweils **eins pro Aufgabe und
 Thema**. Frühere Fehlversuche werden nicht zusätzlich gezählt. Bei Gleichstand
-im Schwächenranking entscheidet die Themenhäufigkeit, anschließend die
+im Ranking für **Grundlagen wiederholen** entscheidet die Themenhäufigkeit, anschließend die
 alphabetische Reihenfolge. Die beiden anderen Angebote verwenden bei gleicher
 Häufigkeit ebenfalls die alphabetische Reihenfolge. Doppelte Themen-Tags werden
 auch bei unterschiedlicher Großschreibung nur einmal gezählt.
@@ -403,7 +403,7 @@ versionierte Browser-Schnittstelle der Aufgabensammlung:
 
 - `assets/course-catalog.js` mit Schema `schullia-course-catalog`, Version 1,
 - `assets/course-generator.js` mit Schema `schullia-course-generator`,
-  Version 1 beziehungsweise Release 1.0.3,
+  Version 1 beziehungsweise Release 1.0.4,
 - `assets/course-source.js` für den gemeinsamen Markdown-Aufbau.
 
 Die `index.html` der Aufgabensammlung und `@Lernpfad` rufen dieselben
@@ -444,8 +444,13 @@ Freeze-Import entfernt, MathPath direkt importiert, die kanonische Angabe
 Abschlussfolie mit `@Lernpfad` angefügt. MathPath fügt keine Abgabe,
 Auswertung, Sperre oder Send-Konfiguration hinzu.
 
+Die Startfolie erhält abhängig vom Angebot einen eigenen Einführungstext für
+**Grundlagen wiederholen**, **Weitere Übungen** oder **Vertiefungen**. Danach
+folgt der Tutorial-Hinweis aus den Wochenaufgaben mit einem Link zum zentralen
+LiaScript-Tutorial. Erst anschließend beginnen die vier ausgewählten Aufgaben.
+
 Geöffnet wird zunächst ein Link der Form
-`https://mint-the-gap.github.io/Aufgabensammlung/course.html?v=1.0.3#course=…`.
+`https://mint-the-gap.github.io/Aufgabensammlung/course.html?v=1.0.4#course=…`.
 Der Hash enthält ausschließlich das strukturierte Manifest mit vier öffentlichen
 Aufgaben-URLs, Thema, Angebot und Niveau. Der dortige Launcher lädt diese
 öffentlichen Quellen, baut denselben Markdown mit `mode: Presentation`, packt
@@ -487,7 +492,7 @@ durch eine Division oder allein durch die Punktzahl als falsch interpretiert;
 ein ausdrücklicher nativer Quizstand bleibt auch bei 0 BE verwertbar.
 
 Vor der Send-Freigabe und während der automatischen Bewertung werden keine
-Richtig-/Falsch-Ergebnisse oder Schwächen ausgegeben. Themen und ausdrücklich
+Richtig-/Falsch-Ergebnisse oder Angaben zu Lernlücken ausgegeben. Themen und ausdrücklich
 angegebene Niveaus dürfen bereits angezeigt werden. Bei älteren Freeze-Versionen
 ohne passende lesende Schnittstelle bleibt der gewöhnliche, nicht eingefrorene
 Kurs über den nativen LiaScript-Lernstand auswertbar. Ein eingefrorener oder im

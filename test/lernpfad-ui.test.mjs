@@ -95,6 +95,14 @@ test('renders a compact token-based LiaScript interface with responsive and acce
 
     const sections = [...root.querySelectorAll('section')]
     assert.equal(sections.length, 3)
+    assert.deepEqual(
+      sections.map(section => section.querySelector('h3').textContent),
+      ['Grundlagen wiederholen', 'Weitere Übungen', 'Vertiefungen']
+    )
+    assert.deepEqual(
+      sections.map(section => section.querySelector('select').getAttribute('aria-label')),
+      ['Thema für Grundlagen wiederholen', 'Thema für Weitere Übungen', 'Thema für Vertiefungen']
+    )
     for (const section of sections) {
       const title = section.querySelector('h3')
       const select = section.querySelector('select')

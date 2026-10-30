@@ -9,7 +9,7 @@ import type {
 import { openLearningCourse } from './lernpfad-open-course';
 
 const TITLES: Record<LearningOfferType, string> = {
-  weakness: 'Schwächen üben', practice: 'Weitere Übungen', deepen: 'Vertiefungen'
+  weakness: 'Grundlagen wiederholen', practice: 'Weitere Übungen', deepen: 'Vertiefungen'
 };
 const CSS = `
 :host{
