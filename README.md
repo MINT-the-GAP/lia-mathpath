@@ -1,6 +1,6 @@
 <!--
 author:   MINT-the-GAP; Martin Lommatzsch
-version:  0.0.14
+version:  0.0.15
 language: de
 edit:     true
 comment:  LiaScript plugin for reusable math path components.
@@ -403,7 +403,7 @@ versionierte Browser-Schnittstelle der Aufgabensammlung:
 
 - `assets/course-catalog.js` mit Schema `schullia-course-catalog`, Version 1,
 - `assets/course-generator.js` mit Schema `schullia-course-generator`,
-  Version 1 beziehungsweise Release 1.0.2,
+  Version 1 beziehungsweise Release 1.0.3,
 - `assets/course-source.js` für den gemeinsamen Markdown-Aufbau.
 
 Die `index.html` der Aufgabensammlung und `@Lernpfad` rufen dieselben
@@ -444,16 +444,22 @@ Freeze-Import entfernt, MathPath direkt importiert, die kanonische Angabe
 Abschlussfolie mit `@Lernpfad` angefügt. MathPath fügt keine Abgabe,
 Auswertung, Sperre oder Send-Konfiguration hinzu.
 
-Geöffnet wird ein Link der Form
-`https://mint-the-gap.github.io/Aufgabensammlung/course.html?v=1.0.2#course=…`.
+Geöffnet wird zunächst ein Link der Form
+`https://mint-the-gap.github.io/Aufgabensammlung/course.html?v=1.0.3#course=…`.
 Der Hash enthält ausschließlich das strukturierte Manifest mit vier öffentlichen
-Aufgaben-URLs, Thema, Angebot und Niveau. Der dortige Player lädt diese
-öffentlichen Quellen, baut denselben Markdown erneut und übergibt ihn unter einer
-deterministischen `parent:schullia-…`-Kurskennung an die normale
-LiaScript-Ansicht. Dadurch entstehen weder ein LiveEditor-Kurs noch ein Upload
-oder eine Übertragung von Lernständen an einen neuen Server. Das Fenster wird
-direkt im Benutzerklick reserviert, vom Ursprungskurs getrennt und bei einem
-Fehler wieder geschlossen.
+Aufgaben-URLs, Thema, Angebot und Niveau. Der dortige Launcher lädt diese
+öffentlichen Quellen, baut denselben Markdown mit `mode: Presentation`, packt
+ihn als gzip-Data-URI und wechselt anschließend mit `location.replace` in den
+unveränderten offiziellen Viewer unter
+`https://liascript.github.io/course/?data:text/plain;charset=utf-8;Content-Encoding=gzip;base64,…`.
+Fehlt der vom Launcher mitgelieferte, fest auf `fflate@0.8.2` gesetzte
+gzip-Encoder oder überschreitet die vollständige Vieweradresse 6000 Zeichen,
+verwendet der Launcher als ausdrücklich getesteten Kompatibilitätsfallback
+weiterhin die eigene `parent:schullia-…`-Framequelle.
+Dadurch entstehen weder ein LiveEditor-Kurs noch ein Upload oder eine
+Übertragung von Lernständen an einen neuen Server. Das Fenster wird direkt im
+Benutzerklick reserviert, vom Ursprungskurs getrennt und bei einem Fehler wieder
+geschlossen.
 
 ## Gelesene Zustände und Grenzen
 
@@ -490,9 +496,15 @@ bewusst nicht auswertbar. Der oben dokumentierte Send-Sonderfall mit geöffneten
 Explain-Hinweisen bleibt bestehen; der Lernpfad repariert oder verändert keine
 Freeze-Bewertung.
 
-Voraussetzung ist eine erreichbare Markdown-Kursquelle mit Kursversion. Das gilt
-auch für die vom Aufgabensammlungs-Player bereitgestellte exakte
-`parent:schullia-…`-Quelle. Aufgaben
+Voraussetzung ist eine erreichbare Markdown-Kursquelle mit Kursversion. Neben
+HTTP(S)-Markdown und der älteren exakten `parent:schullia-…`-Quelle unterstützt
+MathPath die vom offiziellen LiaScript-Viewer verwendete, gzip-komprimierte
+`data:text/plain;charset=utf-8;Content-Encoding=gzip;base64,…`-Kursquelle.
+Akzeptiert wird nur die kanonische, mit `fflate@0.8.2` und dem festgelegten
+Optionssatz erzeugte Base64-/gzip-Darstellung; dadurch bleibt dieselbe Quelle
+auch dieselbe LiaScript-/IndexedDB-Identität. Andere Data-URI-Typen,
+nichtkanonische oder ungültige Kodierungen, zusätzliche gzip-Daten sowie
+übergroße komprimierte oder entpackte Quellen werden abgelehnt. Aufgaben
 werden aus dem gesamten verfassten Kurs gelesen, Codebeispiele und der Kurskopf
 ausgeschlossen. Bei unbekannten Makroexpansionen oder dynamisch erzeugten Quizzen
 bleibt die Zustandszuordnung der betroffenen Folie ausdrücklich unsicher.

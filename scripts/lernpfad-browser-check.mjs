@@ -102,11 +102,10 @@ async function recommend(page, hostIndex = 0) {
   const host = page.locator(hostSelector).nth(hostIndex)
   const button = host.getByRole('button', { name: buttonText, exact: true })
   await expect(button).toBeVisible()
-  // The second fixture instance can sit below LiaScript's transient evaluation
-  // layer. Keyboard activation still exercises the real accessible button and
-  // avoids turning that unrelated overlay animation into a pointer-test flake.
-  if (hostIndex > 0) await button.press('Enter')
-  else await button.click()
+  // A fixture instance can sit below LiaScript's transient evaluation layer.
+  // Keyboard activation still exercises the real accessible button and avoids
+  // turning that unrelated overlay animation into a pointer-test flake.
+  await button.press('Enter')
   await expect(button).toBeEnabled()
   const report = await host.evaluate(element => element.report)
   if (!report) throw new Error('Lernpfad returned no report: ' + await host.locator('.summary').textContent())

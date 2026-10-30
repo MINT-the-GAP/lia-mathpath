@@ -1,4 +1,4 @@
-import { getCourseMarkdownUrl } from './store';
+import { getCourseMarkdownUrl, readCourseMarkdown } from './store';
 import { parseLearningCourse } from './lernpfad-course';
 import { readLearningState } from './lernpfad-state';
 import { buildLearningReport } from './lernpfad-recommendations';
@@ -17,9 +17,10 @@ export async function getLearningRecommendations(): Promise<LearningReport> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
     try {
-      const response = await fetch(url, { signal: controller.signal, cache: 'no-cache' });
-      if (!response.ok) throw new Error('Die Kursquelle konnte nicht geladen werden. Bitte erneut versuchen.');
-      const course = parseLearningCourse(await response.text(), url);
+      const course = parseLearningCourse(await readCourseMarkdown(url, {
+        signal: controller.signal,
+        cache: 'no-cache',
+      }), url);
       const snapshot = await readLearningState(course);
       const report = buildLearningReport(course, snapshot);
       if (getCourseMarkdownUrl() !== url) throw new Error('Der Kurs wurde inzwischen gewechselt. Bitte erneut erstellen.');

@@ -1,4 +1,8 @@
 import type { LearningCourse, LearningStateSnapshot, LearningTask, LearningTaskState } from './lernpfad-types';
+import {
+  decodeLiaScriptGzipDataCourse,
+  isLiaScriptGzipDataCourseUri,
+} from './course-data-uri.js';
 
 type Row = { id: unknown; version: unknown; data: unknown; created?: unknown };
 type NativeTables = { quiz: Row[]; survey: Row[] };
@@ -13,8 +17,8 @@ const TIMEOUT = 2000;
 const NO_NATIVE_RECORD = Symbol('no-native-record');
 
 function isNativeCourseIdentity(value: string): boolean {
-  return /^https?:\/\//i.test(value) ||
-    /^parent:schullia-[a-z0-9][a-z0-9-]{7,159}$/i.test(value);
+  if (/^https?:\/\//i.test(value) || /^parent:schullia-[a-z0-9][a-z0-9-]{7,159}$/i.test(value)) return true;
+  return isLiaScriptGzipDataCourseUri(value);
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -140,6 +144,10 @@ export function projectLearningState(
 /** Exact URL only: never read a different course with the same filename. */
 export async function readNativeLearningTables(courseUrl: string, factory?: IDBFactory): Promise<NativeTables> {
   if (!factory || !isNativeCourseIdentity(courseUrl)) return EMPTY;
+  if (isLiaScriptGzipDataCourseUri(courseUrl)) {
+    try { decodeLiaScriptGzipDataCourse(courseUrl); }
+    catch { return EMPTY; }
+  }
   return new Promise(resolve => {
     let db: IDBDatabase | undefined;
     let finished = false;

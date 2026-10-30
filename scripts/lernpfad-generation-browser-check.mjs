@@ -9,6 +9,7 @@ import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { gunzipSync } from 'node:zlib'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const sharedCandidates = [
@@ -26,6 +27,8 @@ const mathPathUrl = rawBase + 'lia-mathpath/refs/heads/master/README.md'
 const originalCourseUrl = rawBase +
   'lia-mathpath/refs/heads/master/test/fixtures/lernpfad-generation-browser.md'
 const hostSelector = 'lia-mathpath-lernpfad'
+const dataCoursePrefix =
+  'data:text/plain;charset=utf-8;Content-Encoding=gzip;base64,'
 const { chromium, expect: baseExpect } =
   createRequire(path.join(root, 'package.json'))('@playwright/test')
 const expect = baseExpect.configure({ timeout })
@@ -83,6 +86,8 @@ async function loadResources() {
     [pagesBase + 'assets/course-generator.js', path.join(sharedRoot, 'assets/course-generator.js')],
     [pagesBase + 'assets/course-catalog.js', path.join(sharedRoot, 'assets/course-catalog.js')],
     [pagesBase + 'assets/course-player.js', path.join(sharedRoot, 'assets/course-player.js')],
+    [pagesBase + 'assets/vendor/fflate-0.8.2.min.js',
+      path.join(sharedRoot, 'assets/vendor/fflate-0.8.2.min.js')],
     [mathPathUrl, path.join(root, 'README.md')],
     [rawBase + 'lia-mathpath/refs/heads/master/dist/index.js', path.join(root, 'dist/index.js')],
     [rawBase + 'lia-mathpath/refs/heads/master/Explain.md', path.join(root, 'Explain.md')],
@@ -184,6 +189,21 @@ async function adetailsSnapshot(frame) {
 
 const count = (text, expression) => (String(text).match(expression) || []).length
 
+function decodeOfficialDataCourse(url) {
+  const parsed = new URL(url)
+  assert.equal(parsed.origin, 'https://liascript.github.io')
+  assert.equal(parsed.pathname, '/course/')
+  const uri = parsed.search.slice(1)
+  assert.ok(uri.startsWith(dataCoursePrefix))
+  assert.ok(!/%(?:3A|2F|3B|2C)/i.test(uri),
+    'The official LiaScript data URI must not be encoded as one URL component')
+  return {
+    uri,
+    body: gunzipSync(Buffer.from(uri.slice(dataCoursePrefix.length), 'base64'))
+      .toString('utf8')
+  }
+}
+
 async function run() {
   const executablePath = await chromePath()
   const browser = await chromium.launch({
@@ -278,8 +298,7 @@ async function run() {
     )
     assert.equal(manifest.urls.length, 4)
     assert.equal(new Set(manifest.urls).size, 4)
-    assert.equal(openingUrl.search, '?v=1.0.2')
-    assert.equal(await popup.evaluate(() => window.opener === null), true)
+    assert.equal(openingUrl.search, '?v=1.0.3')
     const openCalls = await page.evaluate(() => window.__MATHPATH_OPEN_CALLS__)
     assert.equal(openCalls.length, 1)
     assert.deepEqual(openCalls[0], {
@@ -292,25 +311,24 @@ async function run() {
     await expect(practice.locator('.course-status')).toContainText(/neuen Fenster.*ffnet/i)
     assert.equal(page.isClosed(), false)
 
-    const courseFrame = popup.locator('#courseFrame')
-    await expect(courseFrame).toBeVisible()
-    let frame = await (await courseFrame.elementHandle()).contentFrame()
-    assert.ok(frame)
+    await popup.waitForURL(url =>
+      url.origin === 'https://liascript.github.io' &&
+      url.pathname === '/course/' &&
+      url.search.startsWith('?' + dataCoursePrefix), { timeout })
+    assert.equal(await popup.evaluate(() => window.opener === null), true)
+    const frame = popup
     await navigate(frame, 2)
     await expect(frame.locator('.lia-quiz').first()).toBeVisible()
-    assert.match(frame.url(),
-      /^https:\/\/mint-the-gap\.github\.io\/Aufgabensammlung\/course-frame\.html\?parent:schullia-/)
+    assert.match(await frame.locator('.lia-canvas').first().getAttribute('class') || '',
+      /\blia-mode--presentation\b/)
+    assert.doesNotMatch(await frame.locator('.lia-canvas').first().getAttribute('class') || '',
+      /\blia-mode--textbook\b/)
     assert.equal(await frame.locator('.monaco-editor,#liascript-preview').count(), 0)
     assert.ok(await frame.locator('#lia-toolbar-nav,header.lia-header').count() > 0)
-    check('Normal LiaScript course view', frame.url())
+    assert.ok(await frame.locator('lia-toc,.lia-toc').count() > 0)
+    check('Official LiaScript Presentation course view', frame.url())
 
-    const source = await frame.evaluate(async () => {
-      const uri = decodeURIComponent(location.search.slice(1))
-      const response = await fetch(uri, { cache: 'no-cache' })
-      return { uri, status: response.status, body: await response.text() }
-    })
-    assert.equal(source.status, 200)
-    assert.match(source.uri, /^parent:schullia-/)
+    const source = decodeOfficialDataCourse(frame.url())
     assert.equal(count(source.body, /# BROWSER_TASK_\d+/g), 4)
     assert.equal(count(source.body, /@ADetails\(/g), 4)
     assert.equal(count(source.body, /\[\[\?\]\] @Explain/g), 4)
@@ -322,7 +340,9 @@ async function run() {
     assert.equal(count(source.body,
       /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md$/gm), 1)
     assert.doesNotMatch(source.body, /lia-freeze|FreezeREADME|@Abgabe|@Auswertung/i)
-    check('Complete generated Markdown through parent bridge', {
+    assert.equal(count(source.body, /^mode:\s*Presentation$/gm), 1)
+    assert.doesNotMatch(source.body, /^mode:\s*Textbook$/m)
+    check('Complete generated Markdown through official gzip data URI', {
       uri: source.uri, characters: source.body.length
     })
 
@@ -365,15 +385,11 @@ async function run() {
     const databaseNames = await frame.evaluate(async () =>
       (await indexedDB.databases()).map(entry => entry.name))
     assert.ok(databaseNames.includes(source.uri))
-    check('Closing @Lernpfad reads parent source and IndexedDB', {
+    check('Closing @Lernpfad reads data source and IndexedDB', {
       slide: closingSlide, statusCounts: generatedReport.statusCounts, database: source.uri
     })
 
     await popup.reload({ waitUntil: 'domcontentloaded', timeout })
-    const reloadedCourseFrame = popup.locator('#courseFrame')
-    await expect(reloadedCourseFrame).toBeVisible()
-    frame = await (await reloadedCourseFrame.elementHandle()).contentFrame()
-    assert.ok(frame)
     const restoredSlide = await findLearningPathSlide(frame)
     const restoredReport = await recommend(frame.locator(hostSelector))
     assert.equal(restoredReport.courseUrl, source.uri)
@@ -388,12 +404,14 @@ async function run() {
       originalQuizMarkup)
     check('Origin course and native quiz remain intact')
 
-    const shared = ['course.html', 'course-frame.html', 'assets/course-source.js',
-      'assets/course-generator.js', 'assets/course-catalog.js', 'assets/course-player.js']
+    const shared = ['course.html', 'assets/course-source.js',
+      'assets/course-generator.js', 'assets/course-catalog.js', 'assets/course-player.js',
+      'assets/vendor/fflate-0.8.2.min.js']
       .map(name => pagesBase + name)
     assert.deepEqual(shared.filter(url => !result.served[url]), [])
     assert.equal(Object.keys(result.taskFetches).length, 4)
     assert.ok(Object.values(result.taskFetches).every(value => value >= 2))
+    assert.equal(result.served[pagesBase + 'course-frame.html'] || 0, 0)
     check('Shared local assets exercised at production URLs')
     assert.deepEqual(result.errors, [])
     assert.ok(!result.consoleErrors.some(value =>

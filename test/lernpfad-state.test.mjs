@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { gzipSync } from 'fflate'
 import {
   classifyNativeLearningState, nativeCourseVersion, projectLearningState,
   readLearningState, readNativeLearningTables
@@ -15,6 +16,10 @@ const tables = (data, version = 2) => ({ quiz: [{ id: 1, version, data }], surve
 const native = (solved, trial) => ({ solved, trial, score: 1, state: { Multi: [{ Text: '' }] } })
 const bridge = (changes = {}) => ({ version: 1, courseUrl: course().url, courseVersion: '2.3.4',
   phase: 'review', payload: { s: [{ h: '#2', quiz: { 1: [native(1, 1)] } }] }, manualAwards: {}, ...changes })
+const dataCoursePrefix = 'data:text/plain;charset=utf-8;Content-Encoding=gzip;base64,'
+const canonicalGzipOptions = { level: 6, mem: 8, mtime: 0 }
+const dataCourseUrl = () => dataCoursePrefix + Buffer.from(gzipSync(
+  Buffer.from('<!--\nversion: 2.3.4\n-->\n\n# Kurs'), canonicalGzipOptions)).toString('base64')
 
 test('native score:1 never turns a failed or untouched task into a correct answer', () => {
   assert.equal(classifyNativeLearningState(task(), native(0, 3)).status, 'wrong')
@@ -137,6 +142,22 @@ test('reads the exact generated parent course identity but rejects arbitrary cus
   assert.deepEqual(calls.opens, [parentUrl])
   assert.deepEqual(await readNativeLearningTables('parent:other-0123456789abcdef', factory), empty())
   assert.deepEqual(calls.opens, [parentUrl])
+})
+
+test('opens the exact official LiaScript gzip data-course identity only', async () => {
+  const dataUrl = dataCourseUrl()
+  const { calls, factory } = fakeDatabase(tables([native(1, 1)]).quiz)
+  const data = await readNativeLearningTables(dataUrl, factory)
+  assert.equal(data.quiz[0].data[0].solved, 1)
+  assert.deepEqual(calls.opens, [dataUrl])
+  assert.deepEqual(await readNativeLearningTables(
+    dataUrl.replace('Content-Encoding', 'content-encoding'), factory), empty())
+  assert.deepEqual(await readNativeLearningTables('data:text/html;base64,PGgxPkZha2U8L2gxPg==', factory), empty())
+  const changedHeader = Buffer.from(dataUrl.slice(dataCoursePrefix.length), 'base64')
+  changedHeader[9] ^= 1
+  assert.deepEqual(await readNativeLearningTables(
+    dataCoursePrefix + changedHeader.toString('base64'), factory), empty())
+  assert.deepEqual(calls.opens, [dataUrl])
 })
 
 test('aborts absent database creation and tolerates disabled browser storage', async () => {

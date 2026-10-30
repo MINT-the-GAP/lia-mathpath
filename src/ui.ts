@@ -13,7 +13,8 @@ import {
   getLocalCourseBaseUrl,
   glossaryMatchFormAllowsSurface,
   joinUrl,
-  normalizeTermKey
+  normalizeTermKey,
+  readCourseMarkdown
 } from './store';
 import type { GlossaryMatchForm } from './store';
 
@@ -209,9 +210,7 @@ function ensureADetailsTopicsLoaded(): Promise<void> {
     if (!markdownUrl) return;
 
     try {
-      const resp = await fetch(markdownUrl);
-      if (!resp.ok) return;
-      const markdown = await resp.text();
+      const markdown = await readCourseMarkdown(markdownUrl);
       _adetailsTopicsByTaskIndex = parseADetailsTopicsByIndex(markdown);
     } catch (_) {
       // Optional fallback only.

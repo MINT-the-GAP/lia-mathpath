@@ -83,7 +83,7 @@ type RuntimeWindow = Window & typeof globalThis & {
 };
 
 export const SHARED_COURSE_BASE_URL = 'https://mint-the-gap.github.io/Aufgabensammlung/';
-export const SHARED_COURSE_RELEASE = '1.0.2';
+export const SHARED_COURSE_RELEASE = '1.0.3';
 const LOAD_TIMEOUT_MS = 20_000;
 const loads = new WeakMap<Document, Promise<SharedCourseRuntime>>();
 

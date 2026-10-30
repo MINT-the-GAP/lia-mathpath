@@ -1,5 +1,9 @@
 // Root store and pure helper functions.
 
+import {
+  decodeLiaScriptGzipDataCourse,
+  isLiaScriptGzipDataCourseUri,
+} from './course-data-uri.js';
 import type { GlossaryEntry, MathPathStore, TaskAttempt } from './types';
 
 type RootWindow = Window & { [key: string]: unknown };
@@ -88,6 +92,10 @@ function normalizeHttpUrl(url: string): string | null {
 
 const GENERATED_COURSE_URI_RE = /^parent:schullia-[a-z0-9][a-z0-9-]{7,159}$/i;
 
+function normalizeLiaScriptDataCourseUri(value: string): string | null {
+  return isLiaScriptGzipDataCourseUri(value) ? value : null;
+}
+
 /**
  * Sources created by the Aufgabensammlung player use a deterministic parent:
  * URI. The player exposes only that exact source through its same-origin
@@ -95,10 +103,14 @@ const GENERATED_COURSE_URI_RE = /^parent:schullia-[a-z0-9][a-z0-9-]{7,159}$/i;
  * arbitrary custom protocols.
  */
 export function normalizeCourseSourceUri(value: string): string | null {
-  const raw = String(value || '').trim();
+  const input = String(value || '');
+  const raw = input.trim();
   if (!raw) return null;
+  if (raw.startsWith('data:') && raw !== input) return null;
   const withoutSubmission = raw.split('#', 1)[0];
   if (GENERATED_COURSE_URI_RE.test(withoutSubmission)) return withoutSubmission;
+  const dataCourse = normalizeLiaScriptDataCourseUri(withoutSubmission);
+  if (dataCourse) return dataCourse;
   const http = normalizeHttpUrl(withoutSubmission);
   if (!http) return null;
   try {
@@ -106,6 +118,19 @@ export function normalizeCourseSourceUri(value: string): string | null {
   } catch (_) {
     return null;
   }
+}
+
+/** Read an already validated course source without treating arbitrary data: URIs as fetchable input. */
+export async function readCourseMarkdown(
+  value: string,
+  init: { signal?: AbortSignal; cache?: RequestCache } = {},
+): Promise<string> {
+  const uri = normalizeCourseSourceUri(value);
+  if (!uri) throw new Error('Die Kursquelle verwendet kein unterstütztes Format.');
+  if (isLiaScriptGzipDataCourseUri(uri)) return decodeLiaScriptGzipDataCourse(uri);
+  const response = await fetch(uri, init);
+  if (!response.ok) throw new Error('Die Kursquelle konnte nicht geladen werden. Bitte erneut versuchen.');
+  return response.text();
 }
 
 export function setPluginBaseUrl(url: string): void {

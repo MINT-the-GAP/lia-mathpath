@@ -5,7 +5,7 @@ import {
 } from '../src/lernpfad-open.ts'
 import { SHARED_COURSE_RELEASE } from '../src/lernpfad-shared.ts'
 
-const target = 'https://mint-the-gap.github.io/Aufgabensammlung/course.html?v=1.0.2#course=%7B%22v%22%3A1%7D'
+const target = 'https://mint-the-gap.github.io/Aufgabensammlung/course.html?v=1.0.3#course=%7B%22v%22%3A1%7D'
 
 test('keeps the direct course shell aligned with the shared runtime release', () => {
   assert.equal(DIRECT_COURSE_RELEASE, SHARED_COURSE_RELEASE)
