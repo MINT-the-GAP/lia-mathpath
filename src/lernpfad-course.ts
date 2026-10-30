@@ -1,9 +1,17 @@
 import { parseAssignmentDetails } from './adetails';
 import type { LearningCourse, LearningLevel, LearningTask } from './lernpfad-types';
 
-type SourceLine = { text: string; line: number; dynamic?: boolean };
+type NativeTable = 'quiz' | 'survey';
+type SourceLine = { text: string; line: number; dynamic?: boolean; nativeTable?: NativeTable };
 type Section = { index: number; lines: SourceLine[]; level: LearningLevel | null; unsafe: boolean };
 type MacroCall = { name: string; args: string | null; start: number; end: number };
+type Fence = {
+  character: string;
+  length: number;
+  ascii: boolean;
+  sourceLine: number;
+  nativeTables: Set<NativeTable>;
+};
 
 // These public macros each expand to one native quiz in the inspected Freeze
 // declaration parser. Unknown expansions are never assigned guessed native IDs.
@@ -16,7 +24,7 @@ const QUIZ_MACROS = new Set((
 ).toLowerCase().split(' '));
 const NON_QUIZ_MACROS = new Set([
   'adetails', 'explain', 'tooltip', 'lernpfad', 'resetter', 'abgabe', 'auswertung',
-  'input', 'output', 'uid', 'algebrite.check', 'algebrite.check_expression'
+  'input', 'output', 'uid', 'canvas', 'algebrite.check', 'algebrite.check_expression'
 ]);
 
 function parseLevel(value: string): LearningLevel | null {
@@ -97,6 +105,30 @@ function outsideInlineCode(line: string): string {
   return line.replace(/(`+)[\s\S]*?\1/g, '').replace(/\\[\[\]@]/g, '');
 }
 
+/** LiaScript embeds authored elements into ASCII art only inside double quotes. */
+function quotedAsciiContent(line: string): string[] {
+  const content: string[] = [];
+  const quoted = /"((?:\\.|[^"\\])*)"/g;
+  let match: RegExpExecArray | null;
+  while ((match = quoted.exec(line)) !== null) content.push(match[1]);
+  return content;
+}
+
+function nativeTablesIn(value: string): Set<NativeTable> {
+  const visible = outsideInlineCode(value).replace(/\[\[\?\]\]/g, '');
+  const tables = new Set<NativeTable>();
+  if (/\[\[\s*_{2,}/.test(visible)) tables.add('survey');
+  const withoutSurveys = visible.replace(/\[\[\s*_{2,}[\s\S]*?\]\]/g, '');
+  if (/\[\[|\[\(|\[->\[/.test(withoutSurveys)) tables.add('quiz');
+  return tables;
+}
+
+function isAsciiFence(run: string, info: string): boolean {
+  const language = info.trim().match(/^([^\s]+)/)?.[1].toLowerCase() || '';
+  return language === 'ascii' || language === 'art' ||
+    (!language && run[0] === '`' && run.length >= 9);
+}
+
 /**
  * Read authored declarations only. This is intentionally not a second LiaScript
  * interpreter: unsupported expansion makes that section's native mapping unsafe.
@@ -133,7 +165,7 @@ export function parseLearningCourse(markdown: string, url: string): LearningCour
 
   const sections: Section[] = [];
   let current: Section | null = null;
-  let fence: { character: string; length: number } | null = null;
+  let fence: Fence | null = null;
   let comment = false;
   let script = false;
   function markUnsafe(sourceLine: number): void {
@@ -148,12 +180,34 @@ export function parseLearningCourse(markdown: string, url: string): LearningCour
     if (fenceMatch && !script && !comment) {
       const run = fenceMatch[1];
       if (!fence) {
-        fence = { character: run[0], length: run.length };
-        if (/@[a-z]/i.test(line.slice(fenceMatch[0].length))) markUnsafe(index + 1);
-      } else if (run[0] === fence.character && run.length >= fence.length && /^ {0,3}(?:`+|~+)\s*$/.test(line)) fence = null;
+        const info = line.slice(fenceMatch[0].length);
+        fence = {
+          character: run[0], length: run.length, ascii: isAsciiFence(run, info),
+          sourceLine: index + 1, nativeTables: new Set<NativeTable>()
+        };
+        if (/@[a-z]/i.test(info)) markUnsafe(index + 1);
+      } else if (run[0] === fence.character && run.length >= fence.length && /^ {0,3}(?:`+|~+)\s*$/.test(line)) {
+        const closed = fence;
+        fence = null;
+        if (closed.ascii && closed.nativeTables.size > 0) {
+          if (closed.nativeTables.size === 1 && current) {
+            current.lines.push({
+              text: '', line: closed.sourceLine,
+              nativeTable: closed.nativeTables.values().next().value as NativeTable
+            });
+          } else markUnsafe(closed.sourceLine);
+        }
+      }
       continue;
     }
-    if (fence) continue;
+    if (fence) {
+      if (fence.ascii) {
+        for (const content of quotedAsciiContent(line)) {
+          for (const table of nativeTablesIn(content)) fence.nativeTables.add(table);
+        }
+      }
+      continue;
+    }
     if (!script && !comment) {
       const level = line.match(/^\s*<!--\s*lernpfad-level:\s*([^<>]*?)\s*-->\s*$/i);
       if (level) {
@@ -199,6 +253,7 @@ export function parseLearningCourse(markdown: string, url: string): LearningCour
       sections.push(current);
     } else if (current) current.lines.push({ text: visible, line: index + 1 });
   }
+  if (fence?.ascii && fence.nativeTables.size > 0) markUnsafe(fence.sourceLine);
 
   for (const section of sections) {
     const tasks: LearningTask[] = [];
@@ -223,6 +278,11 @@ export function parseLearningCourse(markdown: string, url: string): LearningCour
     }
     for (const entry of section.lines) {
       if (entry.dynamic) pendingUnknown = true;
+      if (entry.nativeTable) {
+        addTask(entry.nativeTable, entry.line);
+        priorKind = null;
+        continue;
+      }
       const calls = scanMacros(entry.text);
       for (const call of calls) {
         if (call.name === 'auswertung' && call.args && /(?:^|[;,\s])send(?:$|[;,\s])/i.test(unwrapArguments(call.args))) course.sendMode = true;

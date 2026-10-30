@@ -1,6 +1,6 @@
 <!--
-author: Autorenschaft offen
-version: 1.0.0
+author: Martin Lommatzsch
+version: 0.1.0
 language: de
 comment: Beispielkurs für adaptive Übungsempfehlungen und direkt erzeugte Lernpfad-Kurse mit MathPath.
 tags: Mathematik, Grundrechenarten, Bruchrechnung, Prozentrechnung, Lernpfad

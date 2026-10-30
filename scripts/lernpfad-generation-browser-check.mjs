@@ -64,18 +64,46 @@ function originalCourseSource() {
 }
 
 function generatedTaskSource(index) {
-  const details = index === 1
-    ? '@ADetails(`points=0;tags=Grundrechenarten, Browser-Tag`)'
-    : index === 2
-      ? '@ADetails(`points=1,5;tags=Grundrechenarten, Browser-Tag`)'
-      : '@ADetails(1=BE; Grundrechenarten, Browser-Tag)'
-  return [
+  const header = [
     '<!--', 'author: Browser Task ' + index, 'version: 1.0.0',
-    'language: de', 'mode: Presentation', 'import: ' + mathPathUrl, '-->', '',
-    '# BROWSER_TASK_' + index, '', '@Explain(Tutorial)', '',
-    'Browserantwort ' + index + ': [[ browser-' + index + ' ]]',
-    '[[?]] @Explain', '', details, ''
-  ].join('\n')
+    'language: de', 'mode: Presentation', 'import: ' + mathPathUrl
+  ]
+  if (index === 1) {
+    header.push('@canvas: <span data-browser-canvas-stub="1"></span>')
+  }
+  header.push('-->', '', '# BROWSER_TASK_' + index, '', '@Explain(Tutorial)', '')
+
+  if (index === 1) {
+    return header.concat([
+      'Browserantwort 1: [[ browser-1 ]] @canvas',
+      '[[?]] @Explain', '',
+      '@ADetails(`points=0;tags=Grundrechenarten, Browser-Tag`)', ''
+    ]).join('\n')
+  }
+
+  if (index === 2) {
+    return header.concat(Array.from({ length: 8 }, (_, offset) => {
+      const number = offset + 1
+      const details = offset === 0
+        ? '@ADetails(`points=1,5;tags=Grundrechenarten, Browser-Tag`)'
+        : '@ADetails(1=BE; Grundrechenarten, Browser-Tag)'
+      return [
+        'Browserantwort 2-' + number + ': [[ browser-2-' + number + ' ]]',
+        '[[?]] @Explain', '', details, ''
+      ]
+    }).flat()).join('\n')
+  }
+
+  return header.concat([1, 2].flatMap(number => [
+    '``` ascii',
+    '+------------------------+------------------------+',
+    '| " [[ ascii-' + index + '-' + number + '-a ]] " | " [[ ascii-' +
+      index + '-' + number + '-b ]] " |',
+    '+------------------------+------------------------+',
+    '```',
+    '[[?]] @Explain', '', '@resetter', '',
+    '@ADetails(1=BE; Grundrechenarten, Browser-Tag)', ''
+  ])).join('\n')
 }
 
 async function loadResources() {
@@ -330,8 +358,10 @@ async function run() {
 
     const source = decodeOfficialDataCourse(frame.url())
     assert.equal(count(source.body, /# BROWSER_TASK_\d+/g), 4)
-    assert.equal(count(source.body, /@ADetails\(/g), 4)
-    assert.equal(count(source.body, /\[\[\?\]\] @Explain/g), 4)
+    assert.equal(count(source.body, /@ADetails\(/g), 13)
+    assert.equal(count(source.body, /\[\[\?\]\] @Explain/g), 13)
+    assert.equal(count(source.body, /^``` ascii$/gm), 4)
+    assert.match(source.body, /\[\[\s*browser-1\s*\]\]\s+@canvas/)
     assert.equal(count(source.body, /@Lernpfad/g), 1)
     assert.match(source.body, /lernpfad-level:\s*Einsteiger/)
     assert.match(source.body, /points=0;tags=Grundrechenarten, Browser-Tag/)
@@ -380,14 +410,17 @@ async function run() {
     const generatedHost = frame.locator(hostSelector)
     const generatedReport = await recommend(generatedHost)
     assert.equal(generatedReport.courseUrl, source.uri)
-    assert.equal(Object.values(generatedReport.statusCounts).reduce((sum, value) => sum + value, 0), 4)
-    assert.equal(generatedReport.statusCounts.wrong, 1)
+    assert.deepEqual(generatedReport.statusCounts, {
+      correct: 0, wrong: 1, partial: 0, unanswered: 12, unavailable: 0
+    })
+    assert.deepEqual(generatedReport.warnings, [])
     assert.equal(generatedReport.topics.find(item =>
-      item.topic === 'Grundrechenarten')?.taskCount, 4)
+      item.topic === 'Grundrechenarten')?.taskCount, 13)
     const apiReport = await frame.evaluate(() =>
       window.__LIA_MATHPATH__.getLearningRecommendations())
     assert.equal(apiReport.courseUrl, source.uri)
-    assert.equal(apiReport.statusCounts.wrong, 1)
+    assert.deepEqual(apiReport.statusCounts, generatedReport.statusCounts)
+    assert.deepEqual(apiReport.warnings, [])
     const databaseNames = await frame.evaluate(async () =>
       (await indexedDB.databases()).map(entry => entry.name))
     assert.ok(databaseNames.includes(source.uri))
@@ -399,7 +432,8 @@ async function run() {
     const restoredSlide = await findLearningPathSlide(frame)
     const restoredReport = await recommend(frame.locator(hostSelector))
     assert.equal(restoredReport.courseUrl, source.uri)
-    assert.equal(restoredReport.statusCounts.wrong, 1)
+    assert.deepEqual(restoredReport.statusCounts, generatedReport.statusCounts)
+    assert.deepEqual(restoredReport.warnings, [])
     check('Generated result survives a full course reload', {
       slide: restoredSlide, statusCounts: restoredReport.statusCounts
     })

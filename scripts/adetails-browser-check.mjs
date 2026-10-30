@@ -110,7 +110,14 @@ async function snapshot(page) {
         standaloneBadges: marker.shadowRoot?.querySelectorAll('.lia-mathpath-adetails-points').length || 0,
         freezeBadges: marker.shadowRoot?.querySelectorAll('.lia-adetails-points').length || 0
       })),
-      badges: badges.map(node => ({ text: node.textContent.trim(), html: node.outerHTML })),
+      badges: badges.map(node => {
+        const style = getComputedStyle(node)
+        return { text: node.textContent.trim(), html: node.outerHTML, style: {
+          display: style.display, fontWeight: style.fontWeight, opacity: style.opacity,
+          borderTopWidth: style.borderTopWidth, borderRadius: style.borderRadius,
+          paddingLeft: style.paddingLeft, paddingRight: style.paddingRight
+        } }
+      }),
       explain: [...document.querySelectorAll('lia-mathpath-explain')].map(host =>
         [...(host.shadowRoot?.querySelectorAll('.lia-mathpath-explain-link') || [])].map(link => link.textContent.trim())),
       frozen: document.body.classList.contains('lia-course-frozen'),
@@ -209,6 +216,11 @@ async function runScenario(browser, name, expect) {
     result.initial = state
     check('One badge per quiz, with zero, summed and decimal points', state.badges.length === 4 &&
       JSON.stringify(state.badges.map(badge => badge.text)) === JSON.stringify(['2 BE', '3 BE', '0 BE', '1.5 BE']), state.badges)
+    if (name === 'standalone' || name === 'freeze-delayed') check('Standalone points use Freeze typography without a pill',
+      state.badges.every(badge => badge.style.display === 'inline-flex' && badge.style.fontWeight === '700' &&
+        badge.style.opacity === '0.92' && badge.style.borderTopWidth === '0px' &&
+        badge.style.borderRadius === '0px' && badge.style.paddingLeft === '0px' &&
+        badge.style.paddingRight === '0px'), state.badges)
     check('All ordinary comma-separated and backtick tags survive macro expansion',
       state.markers[0]?.raw === '2=BE;Bruchrechnung, Einheiten' &&
       state.markers[1]?.raw === 'points=1|2;tags=Einheiten, Bruchrechnung', state.markers)

@@ -127,7 +127,7 @@ export function installAssignmentDetails(doc: Document = document): void {
         if (shadow.querySelector('[data-lia-freeze-adetails-sidecar]')) return;
         const style = doc.createElement('style');
         style.setAttribute('data-lia-mathpath-adetails', 'style');
-        style.textContent = ':host{vertical-align:middle}.lia-mathpath-adetails-points{display:inline-block;font:600 .85em/1.4 sans-serif;border:1px solid currentColor;border-radius:999px;padding:.12em .65em;margin:.25em 0;white-space:nowrap}';
+        style.textContent = ':host{visibility:visible!important;vertical-align:middle;max-width:100%;margin:.22rem 0 .42rem .7rem;pointer-events:none!important}.lia-mathpath-adetails-points{display:inline-flex;align-items:center;gap:.28rem;font-weight:700;white-space:nowrap;opacity:.92;color:inherit;pointer-events:none!important}';
         const root = doc.createElement('span');
         root.setAttribute('data-lia-mathpath-adetails', 'points');
         root.setAttribute('part', 'points');

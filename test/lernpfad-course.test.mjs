@@ -63,6 +63,72 @@ test('does not count header definitions, code fences, inline code, comments or s
   assert.equal(course.tasks[0].mappingSafe, true)
 })
 
+test('maps canvas and grouped ASCII-art tasks without making the generated course unsafe', () => {
+  const ordinary = Array.from({ length: 8 }, (_, index) => [
+    'Aufgabe ' + (index + 1) + ': [[ ' + (index + 1) + ' ]]', '',
+    '@ADetails(1=BE;Grundrechenarten)', ''
+  ]).flat()
+  const asciiTask = (value, label) => [
+    '``` ascii',
+    '+---------------------------+',
+    '| " [[ ' + value + ' ]] " | " [[ ' + (value + 1) + ' ]] " |',
+    '+---------------------------+',
+    '```', '[[?]] @Explain', '', '@ADetails(1=BE;' + label + ')', ''
+  ]
+  const course = parse([
+    '# Canvas', '', 'Das Stadion besitzt insgesamt [[ 10800 ]] Sitzplätze. @canvas', '',
+    '@ADetails(1=BE;Sachaufgabe, Multiplikation, Grundrechenarten)', '',
+    '## Acht native Aufgaben', '', ...ordinary,
+    '## ASCII A', '', ...asciiTask(24, 'ASCII-A1'), ...asciiTask(30, 'ASCII-A2'),
+    '## ASCII B', '', ...asciiTask(12, 'ASCII-B1'), ...asciiTask(18, 'ASCII-B2')
+  ])
+  assert.equal(course.tasks.length, 13)
+  assert.deepEqual(course.tasks.map(task => task.hash), [
+    '#1', '#2', '#2', '#2', '#2', '#2', '#2', '#2', '#2', '#3', '#3', '#4', '#4'
+  ])
+  assert.deepEqual(course.tasks.map(task => task.nativeIndex), [0, 0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 0, 1])
+  assert.ok(course.tasks.every(task => task.table === 'quiz' && task.mappingSafe))
+  assert.deepEqual(course.tasks.slice(-4).map(task => task.tags), [
+    ['ASCII-A1'], ['ASCII-A2'], ['ASCII-B1'], ['ASCII-B2']
+  ])
+  assert.equal(course.warnings.length, 0)
+})
+
+test('recognizes official art and nine-backtick ASCII while ignoring code examples and unquoted drawings', () => {
+  const course = parse([
+    '# ASCII variants', '',
+    '~~~ art', '| " [[ 7 ]] " |', '~~~', '', '@ADetails(1;Art)', '',
+    '~~~ ART', '| " [[___]] " |', '~~~', '', '@ADetails(0;Survey)', '',
+    '`````````', '| " [[ 9 ]] " |', '`````````', '', '@ADetails(1;Nine)', '',
+    '``` ascii', '| [[ not quoted ]] |', '```', '',
+    '```` markdown', '``` ascii', '| " [[ example ]] " |', '```', '````', '',
+    '``` text', '" [[ example ]] "', '```'
+  ])
+  assert.equal(course.tasks.length, 3)
+  assert.deepEqual(course.tasks.map(task => [task.table, task.nativeIndex, task.tags]), [
+    ['quiz', 0, ['Art']], ['survey', 0, ['Survey']], ['quiz', 1, ['Nine']]
+  ])
+  assert.ok(course.tasks.every(task => task.mappingSafe))
+  assert.equal(course.warnings.length, 0)
+})
+
+test('keeps ambiguous and unclosed ASCII quizzes explicitly unsafe', () => {
+  const ambiguous = parse([
+    '# Ambiguous', '', '``` ascii', '| " [[ 1 ]] " | " [[___]] " |', '```', '',
+    '@ADetails(1;Ambiguous)'
+  ])
+  assert.equal(ambiguous.tasks.length, 1)
+  assert.equal(ambiguous.tasks[0].table, null)
+  assert.equal(ambiguous.tasks[0].mappingSafe, false)
+  assert.equal(ambiguous.warnings.length, 1)
+
+  const unclosed = parse([
+    '# Unclosed', '', '``` ascii', '| " [[ 1 ]] " |'
+  ])
+  assert.equal(unclosed.tasks.length, 0)
+  assert.equal(unclosed.warnings.length, 1)
+})
+
 test('marks whole section unsafe for unknown expansions without shifting a later safe section', () => {
   const course = parse([
     '# Dynamic', '', '[[ 2 ]]', '', '@ADetails(1;Known)', '',
@@ -170,7 +236,7 @@ test('malformed source remains explicitly unavailable instead of making up tasks
 test('Example.md is a safe eight-task Einsteiger course with complete metadata', async () => {
   const markdown = await readFile(new URL('../Example.md', import.meta.url), 'utf8')
   const course = parseLearningCourse(markdown, 'https://example.test/Example.md')
-  assert.equal(course.version, '1.0.0')
+  assert.equal(course.version, '0.1.0')
   assert.equal(course.tasks.length, 8)
   assert.deepEqual(course.tasks.map(task => task.points), [0, 1, 1, 1, 1, 1.5, 1, 1])
   assert.ok(course.tasks.every(task =>

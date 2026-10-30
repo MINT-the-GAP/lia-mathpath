@@ -1,6 +1,6 @@
 <!--
 author:   MINT-the-GAP; Martin Lommatzsch
-version:  0.0.16
+version:  0.0.17
 language: de
 edit:     true
 comment:  LiaScript plugin for reusable math path components.
@@ -257,8 +257,10 @@ Deshalb sind die Definitionen identisch und auf keine MathPath-API angewiesen.
 Das Makro serialisiert einen abgetrennten `lia-adetails`-Host mit sicher gesetzten
 Attributen in seine eigene Skriptausgabe. Es verschiebt keine nativen Quizknoten.
 
-Ohne Freeze rendert MathPath ausschließlich seine eigene Punkteplakette im Shadow
-DOM des Markers. Sobald die Freeze-Laufzeit erkannt wird, entfernt MathPath nur
+Ohne Freeze rendert MathPath ausschließlich seine eigene Punkteangabe im Shadow
+DOM des Markers. Sie verwendet dieselbe schlichte, fette Textdarstellung wie
+Freeze, lädt Freeze dafür aber nicht nach. Sobald die Freeze-Laufzeit erkannt
+wird, entfernt MathPath nur
 diesen eigenen Inhalt und überlässt Freeze Anzeige, Bewertung und Zusatzfunktionen.
 Das gilt auch bei späterem Laden von Freeze. Die Metadaten bleiben für Explain lesbar.
 
@@ -514,7 +516,11 @@ werden aus dem gesamten verfassten Kurs gelesen, Codebeispiele und der Kurskopf
 ausgeschlossen. Bei unbekannten Makroexpansionen oder dynamisch erzeugten Quizzen
 bleibt die Zustandszuordnung der betroffenen Folie ausdrücklich unsicher.
 Vorhandene Themen bleiben im Themenangebot erhalten; es werden keine geratenen
-Aufgabenindizes oder Fehlermeldungen als falsche Antworten gewertet.
+Aufgabenindizes oder Fehlermeldungen als falsche Antworten gewertet. Das
+quizneutrale Eingabe-Hilfsmakro `@canvas` ändert die Zuordnung nicht. Offizielle
+`ascii`-/`art`-Blöcke werden anhand ihrer doppelt zitierten LiaScript-Inhalte
+erkannt und wie vom Interpreter als jeweils genau eine gruppierte Aufgabe
+gezählt; gewöhnliche Codeblöcke bleiben weiterhin ausgeschlossen.
 
 ## API und Prüfung
 
@@ -545,7 +551,10 @@ ADetails-Browserlauf. `npm run test:browser:adetails` und `npm run test:browser`
 prüfen zusätzlich die vorhandenen ADetails-, Explain- und Glossarfunktionen.
 `npm run test:browser:lernpfad-generation` prüft den Themenwechsel, das
 synchron reservierte Popup, die normale Vier-Aufgaben-Kursansicht sowie
-`@ADetails`, `@Explain` und den erneuten `@Lernpfad` im erzeugten Kurs.
+`@ADetails`, `@Explain` und den erneuten `@Lernpfad` im erzeugten Kurs. Der Lauf
+enthält außerdem die Regression aus einem Canvas-Quiz, acht nativen Quizzen und
+vier in zwei plus zwei ASCII-Gruppen organisierten Quizzen: Alle 13 Zustände
+müssen ohne Unsicherheitswarnung zugeordnet werden.
 Browserläufe benötigen Chrome, Netzwerkzugriff auf den Interpreter sowie die
 kompatiblen benachbarten Freeze- und Resetter-Checkouts.
 

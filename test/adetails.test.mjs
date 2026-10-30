@@ -92,6 +92,13 @@ test('renders metadata without modifying any quiz or marker light-DOM children',
     const markers = [...doc.querySelectorAll('lia-adetails')]
     const markerChildren = markers.map(marker => [...marker.childNodes])
     assert.deepEqual(markers.map(marker => badge(marker)?.textContent), ['0 BE', '3.5 BE'])
+    const presentation = markers[0].shadowRoot.querySelector('[data-lia-mathpath-adetails="style"]').textContent
+    assert.match(presentation, /display:inline-flex/)
+    assert.match(presentation, /font-weight:700/)
+    assert.match(presentation, /opacity:\.92/)
+    assert.doesNotMatch(presentation, /\b(?:border(?:-[\w-]+)?|padding(?:-[\w-]+)?|font):/)
+    assert.equal(markers[0].style.getPropertyValue('display'), 'inline-block')
+    assert.equal(markers[0].style.getPropertyPriority('display'), 'important')
     markers[0].setAttribute('data-adetails', '2=BE;Algebra')
     await flush()
     assert.equal(badge(markers[0]).textContent, '2 BE')
