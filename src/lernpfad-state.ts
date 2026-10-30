@@ -10,6 +10,7 @@ type RuntimeWindow = Window & typeof globalThis & {
 };
 const EMPTY: NativeTables = { quiz: [], survey: [] };
 const TIMEOUT = 2000;
+const NO_NATIVE_RECORD = Symbol('no-native-record');
 
 function isNativeCourseIdentity(value: string): boolean {
   return /^https?:\/\//i.test(value) ||
@@ -34,7 +35,8 @@ export function classifyNativeLearningState(task: LearningTask, raw: unknown, so
   if (raw.solved === 1) return { ...base, status: 'correct', reason: 'Die letzte Prüfung war richtig.' };
   if (raw.solved === -1) return { ...base, status: 'unavailable', reason: 'Die Lösung wurde aufgedeckt; eine eigene richtige Antwort ist nicht belegt.' };
   if (raw.trial > 0) return { ...base, status: 'wrong', reason: 'Die aktuelle Antwort wurde noch nicht richtig geprüft.' };
-  // A real zero-attempt record is evidence; a missing record is never synthesized.
+  // A real zero-attempt record is evidence; missing records are handled by the
+  // course-level "not completed" policy in projectLearningState.
   return { ...base, status: 'unanswered', reason: 'Es ist noch keine Prüfung gespeichert.' };
 }
 
@@ -59,6 +61,7 @@ function nativeElement(task: LearningTask, course: LearningCourse, rows: Row[]):
   const version = nativeCourseVersion(course.version);
   if (version === null || task.nativeIndex === null) return undefined;
   const matches = rows.filter(row => row.id === task.sectionIndex && row.version === version);
+  if (!matches.length) return NO_NATIVE_RECORD;
   matches.sort((a, b) => Number(b.created || 0) - Number(a.created || 0));
   const data = matches[0]?.data;
   const expected = course.tasks.filter(other => other.sectionIndex === task.sectionIndex && other.table === task.table).length;
@@ -85,7 +88,8 @@ function validIdentity(course: LearningCourse, bridge: Record<string, unknown>):
     typeof bridge.courseVersion === 'string' && bridge.courseVersion === course.version;
 }
 
-/** Pure projection used by both the UI and regression tests. It never guesses missing states. */
+/** Pure projection used by UI and tests. Missing compatible records are the
+ * explicit "not completed" case; malformed or ambiguous records stay unavailable. */
 export function projectLearningState(
   course: LearningCourse,
   tables: NativeTables,
@@ -123,7 +127,12 @@ export function projectLearningState(
       return classifyNativeLearningState(task, frozenElement(task, bridge.payload), 'freeze-snapshot');
     }
     if (task.table === 'survey') return unavailable(task, 'Für die offene Antwort liegt keine automatische Bewertung vor.');
-    return classifyNativeLearningState(task, nativeElement(task, course, tables.quiz));
+    const element = nativeElement(task, course, tables.quiz);
+    if (element === NO_NATIVE_RECORD) {
+      return { taskId: task.id, status: 'unanswered' as const, source: 'indexeddb',
+        reason: 'Für diese Aufgabe ist noch keine Prüfung gespeichert.' };
+    }
+    return classifyNativeLearningState(task, element);
   });
   return { phase, warnings, states };
 }
@@ -167,8 +176,15 @@ export async function readNativeLearningTables(courseUrl: string, factory?: IDBF
 }
 
 function freezeContext(win: RuntimeWindow): { bridge: unknown; present: boolean } {
-  const present = !!(win.__liaFreezeLearningStateV1__ || win.__liaFreezeV2LifecycleV1__ || win.__liaSubmissionDemo ||
-    win.document.getElementById('lia-submission-runtime-style') || win.document.body?.classList.contains('lia-course-frozen'));
+  const classes = win.document.body?.classList;
+  const protectedState = !!(classes?.contains('lia-course-frozen') ||
+    classes?.contains('lia-send-collect') || classes?.contains('lia-send-grading') ||
+    classes?.contains('lia-send-review'));
+  // A Freeze import alone is not a protected result state. Older published
+  // variants expose lifecycle/bootstrap globals but no learning-state reader;
+  // in an ordinary live course MathPath must still read LiaScript's native
+  // readonly state. Frozen and Send phases remain closed without a valid bridge.
+  const present = !!win.__liaFreezeLearningStateV1__ || protectedState;
   let bridge: unknown = null;
   try { bridge = win.__liaFreezeLearningStateV1__?.read(); } catch { /* never infer live from a failed bridge */ }
   return { bridge, present };

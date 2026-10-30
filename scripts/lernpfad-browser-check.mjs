@@ -118,6 +118,20 @@ function topic(report, name) {
 
 function totalTasks(report) { return Object.values(report.statusCounts).reduce((sum, count) => sum + count, 0) }
 
+function contrastRatio(foreground, background) {
+  const channels = value => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number)
+  const luminance = value => {
+    const [red, green, blue] = channels(value).map(channel => {
+      const normalized = channel / 255
+      return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+  }
+  const first = luminance(foreground)
+  const second = luminance(background)
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05)
+}
+
 async function quizRecords(page, courseUrl) {
   return page.evaluate(async name => {
     const names = await indexedDB.databases()
@@ -149,6 +163,70 @@ async function verifyUi(page, report) {
   const deeper = report.recommendations.find(value => value.type === 'deepen')
   assert.equal(practice.targetLevel, 'Einsteiger')
   assert.equal(deeper.targetLevel, 'Fortgeschritten')
+  if (report.phase === 'collect' || report.phase === 'grading') {
+    await expect(host.locator('.summary-message')).toHaveCount(1)
+    await expect(host.locator('.summary-item')).toHaveCount(0)
+  } else {
+    await expect(host.locator('.summary-item')).toHaveCount(5)
+  }
+  const desktop = await host.evaluate(element => {
+    const root = element.shadowRoot
+    const create = root.querySelector('button.create')
+    const offers = root.querySelector('.offers')
+    const warning = root.querySelector('.warnings')
+    const styles = getComputedStyle(create)
+    return {
+      fontSize: styles.fontSize,
+      buttonHeight: create.getBoundingClientRect().height,
+      buttonWidth: create.getBoundingClientRect().width,
+      hostWidth: element.getBoundingClientRect().width,
+      columns: getComputedStyle(offers).gridTemplateColumns.split(/\s+/).filter(Boolean).length,
+      warningBeforeOffers: !!(warning.compareDocumentPosition(offers) & Node.DOCUMENT_POSITION_FOLLOWING)
+    }
+  })
+  assert.equal(desktop.fontSize, '16px')
+  assert.ok(desktop.buttonHeight >= 40 && desktop.buttonHeight <= 56, JSON.stringify(desktop))
+  assert.ok(desktop.buttonWidth < desktop.hostWidth, JSON.stringify(desktop))
+  assert.equal(desktop.columns, 3)
+  assert.equal(desktop.warningBeforeOffers, true)
+
+  const dark = await host.evaluate(element => {
+    const root = element.shadowRoot
+    const properties = {
+      '--lia-mathpath-accent-rgb': '84, 196, 198',
+      '--lia-mathpath-accent-contrast-rgb': '0, 0, 0',
+      '--lia-mathpath-surface-rgb': '18, 28, 30',
+      '--lia-mathpath-text-rgb': '230, 239, 240'
+    }
+    for (const [name, value] of Object.entries(properties)) element.style.setProperty(name, value)
+    const select = root.querySelector('select')
+    const create = root.querySelector('button.create')
+    const result = {
+      selectColor: getComputedStyle(select).color,
+      selectBackground: getComputedStyle(select).backgroundColor,
+      buttonColor: getComputedStyle(create).color,
+      buttonBackground: getComputedStyle(create).backgroundColor
+    }
+    for (const name of Object.keys(properties)) element.style.removeProperty(name)
+    return result
+  })
+  assert.ok(contrastRatio(dark.selectColor, dark.selectBackground) >= 4.5, JSON.stringify(dark))
+  assert.ok(contrastRatio(dark.buttonColor, dark.buttonBackground) >= 4.5, JSON.stringify(dark))
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  const mobile = await host.evaluate(element => {
+    const root = element.shadowRoot
+    const create = root.querySelector('button.create')
+    return {
+      columns: getComputedStyle(root.querySelector('.offers')).gridTemplateColumns.split(/\s+/).filter(Boolean).length,
+      buttonWidth: create.getBoundingClientRect().width,
+      hostWidth: element.getBoundingClientRect().width
+    }
+  })
+  assert.equal(mobile.columns, 1)
+  assert.ok(Math.abs(mobile.buttonWidth - mobile.hostWidth) <= 2, JSON.stringify(mobile))
+  await page.setViewportSize({ width: 1360, height: 960 })
   await host.locator('section[data-offer="deepen"] select').selectOption({ label: 'Transfer' })
   await expect(host.locator('section[data-offer="deepen"] .reason')).toContainText(/höher|höchste|Experte/i)
   assert.equal((await host.evaluate(element => element.report)).recommendations.find(value => value.type === 'deepen').available, false)
@@ -211,11 +289,16 @@ async function runScenario(browser, name) {
     const recordsBefore = await quizRecords(page, courseUrl)
     let report = await recommend(page)
     assert.equal(totalTasks(report), 6)
-    assert.equal(report.statusCounts.unanswered, 0, 'Absent stored state is not automatically unanswered')
+    if (name === 'freeze-send') {
+      assert.equal(report.statusCounts.unanswered, 0)
+      assert.equal(report.statusCounts.unavailable, 6, 'Send collection withholds all task outcomes')
+    } else {
+      assert.equal(report.statusCounts.unanswered, 6, 'Missing compatible records count as not yet completed')
+    }
     assert.equal(report.statusCounts.wrong, 0)
     assert.equal(topic(report, 'Bruchrechnung').taskCount, 4)
     assert.equal(topic(report, 'Einheiten').taskCount, 4)
-    assert.equal(topic(report, 'Transfer').unavailableCount, 1)
+    assert.equal(topic(report, 'Transfer').unavailableCount, name === 'freeze-send' ? 1 : 0)
     assert.deepEqual((await quizRecords(page, courseUrl)) || [], recordsBefore || [], 'Recommendation button never writes quiz state')
     await verifyUi(page, report)
     check('Whole course metadata, explicit levels and absent-state handling', report)
@@ -261,8 +344,8 @@ async function runScenario(browser, name) {
       })
       report = await recommend(page)
       assert.equal(report.statusCounts.wrong, 1)
-      assert.equal(topic(report, 'Bruchrechnung').weaknessCount, 3)
-      assert.equal(topic(report, 'Einheiten').weaknessCount, 3)
+      assert.equal(topic(report, 'Bruchrechnung').weaknessCount, 4)
+      assert.equal(topic(report, 'Einheiten').weaknessCount, 4)
       assert.equal(topic(report, 'Reflexion').weaknessCount, 1, 'An explicit untouched native quiz remains unanswered at zero BE')
       assert.ok(await page.evaluate(() => window.__lernpfadNodes.every((node, index) =>
         node.isConnected && node.outerHTML === window.__lernpfadMarkup[index])))
@@ -274,7 +357,7 @@ async function runScenario(browser, name) {
       report = await recommend(page)
       assert.equal(report.statusCounts.correct, 1)
       assert.equal(report.statusCounts.wrong, 0)
-      assert.equal(topic(report, 'Bruchrechnung').weaknessCount, 2)
+      assert.equal(topic(report, 'Bruchrechnung').weaknessCount, 3)
       check('Later correct answer replaces prior errors across slides', report)
       await navigate(page, 3, 1, 0)
       await page.locator('input.lia-quiz__input').fill('gamma')
@@ -290,7 +373,7 @@ async function runScenario(browser, name) {
       report = await recommend(page)
       assert.equal(report.statusCounts.correct, 1)
       assert.equal(topic(report, 'Bruchrechnung').weaknessCount, 3)
-      assert.equal(topic(report, 'Transfer').unavailableCount, 1)
+      assert.equal(topic(report, 'Transfer').unavailableCount, 0)
       check('Reset updates recommendations without visiting unrelated tasks', report)
       await recommend(page)
       await recommend(page, 1)

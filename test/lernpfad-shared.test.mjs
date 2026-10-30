@@ -40,8 +40,38 @@ test('accepts the explicit v1 shared runtime and returns one promise per documen
   } finally { dom.window.close() }
 })
 
-test('rejects an incompatible generator or catalog version', async () => {
-  for (const changes of [{ version: 2 }, { schema: 'other' }]) {
+test('loads release-pinned assets in dependency order', async () => {
+  const dom = new JSDOM('', { url: 'https://course.test/' })
+  try {
+    const urls = []
+    const append = dom.window.document.head.append.bind(dom.window.document.head)
+    dom.window.document.head.append = (...nodes) => {
+      for (const node of nodes) {
+        urls.push(node.src)
+        append(node)
+        if (node.src.includes('course-source.js')) {
+          dom.window.SchulLiaCourseSource = { build: () => '# Kurs' }
+        } else if (node.src.includes('course-generator.js')) {
+          install(dom)
+          delete dom.window.SchulLiaCourseCatalog
+        } else if (node.src.includes('course-catalog.js')) {
+          dom.window.SchulLiaCourseCatalog = catalog()
+        }
+        queueMicrotask(() => node.dispatchEvent(new dom.window.Event('load')))
+      }
+    }
+    const runtime = await loadSharedCourseRuntime(dom.window.document, 'https://catalog.test/root/')
+    assert.equal(runtime.generator.release, '1.0.0')
+    assert.deepEqual(urls, [
+      'https://catalog.test/root/assets/course-source.js?v=1.0.0',
+      'https://catalog.test/root/assets/course-generator.js?v=1.0.0',
+      'https://catalog.test/root/assets/course-catalog.js?v=1.0.0'
+    ])
+  } finally { dom.window.close() }
+})
+
+test('rejects an incompatible generator, release, or catalog version', async () => {
+  for (const changes of [{ version: 2 }, { schema: 'other' }, { release: '1.0.1' }]) {
     const dom = new JSDOM('', { url: 'https://course.test/' })
     try {
       install(dom, changes)

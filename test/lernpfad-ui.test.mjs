@@ -52,6 +52,72 @@ test('loads only on click, owns its controls, and updates each offer without qui
   } finally { dom.window.close() }
 })
 
+test('renders a compact token-based LiaScript interface with responsive and accessible cards', async () => {
+  const dom = new JSDOM('<lia-mathpath-lernpfad></lia-mathpath-lernpfad>')
+  try {
+    const value = report()
+    value.warnings = ['Der Lernstand ist für eine Aufgabe noch nicht verfügbar.']
+    registerLearningPathElement(dom.window.document, async () => value)
+    const host = dom.window.document.querySelector('lia-mathpath-lernpfad')
+    const root = host.shadowRoot
+    const create = root.querySelector('button.create')
+    assert.ok(create.classList.contains('lia-btn'))
+    assert.ok(create.classList.contains('lia-btn--primary'))
+    assert.equal(create.getAttribute('aria-controls'), 'lia-mathpath-summary lia-mathpath-offers')
+
+    create.click()
+    await tick()
+
+    const style = root.querySelector('style').textContent
+    assert.match(style, /:host\{[\s\S]*font-size:16px/)
+    assert.match(style, /button,select\{[\s\S]*font-size:1em/)
+    assert.match(style, /--lia-mathpath-accent-rgb/)
+    assert.match(style, /--lia-mathpath-surface-rgb/)
+    assert.match(style, /--lia-mathpath-text-rgb/)
+    assert.doesNotMatch(style, /--lia-background-color|border:1px solid currentColor/)
+    assert.match(style, /@media\(max-width:42em\)/)
+    assert.match(style, /@media\(prefers-reduced-motion:reduce\)/)
+    assert.match(style, /@media\(forced-colors:active\)/)
+
+    const summary = root.querySelector('.summary')
+    assert.equal(summary.getAttribute('aria-atomic'), 'true')
+    assert.equal(summary.dataset.state, 'ready')
+    assert.equal(summary.querySelectorAll('.summary-item').length, 5)
+    assert.equal(summary.querySelector('.summary-list').getAttribute('aria-label'), 'Ergebnisübersicht')
+
+    const warnings = root.querySelector('.warnings')
+    const offers = root.querySelector('.offers')
+    assert.match(warnings.textContent, /^Hinweis:/)
+    assert.equal(warnings.dataset.state, 'warning')
+    assert.ok(warnings.compareDocumentPosition(offers) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING)
+
+    const sections = [...root.querySelectorAll('section')]
+    assert.equal(sections.length, 3)
+    for (const section of sections) {
+      const title = section.querySelector('h3')
+      const select = section.querySelector('select')
+      const reason = section.querySelector('.reason')
+      const status = section.querySelector('.course-status')
+      const button = section.querySelector('button.open-course')
+      assert.equal(section.getAttribute('aria-labelledby'), title.id)
+      assert.equal(section.querySelector('label').htmlFor, select.id)
+      assert.equal(section.querySelectorAll('.meta > .level, .meta > .count').length, 2)
+      assert.ok(button.classList.contains('lia-btn'))
+      assert.ok(button.classList.contains('lia-btn--outline'))
+      assert.deepEqual(button.getAttribute('aria-describedby').split(' '), [reason.id, status.id])
+      assert.equal(status.getAttribute('aria-atomic'), 'true')
+    }
+
+    const deepen = root.querySelector('[data-offer=deepen]')
+    const deepenSelect = deepen.querySelector('select')
+    deepenSelect.value = 'Transfer'
+    deepenSelect.dispatchEvent(new dom.window.Event('change'))
+    const unavailable = deepen.querySelector('button.open-course')
+    assert.equal(unavailable.disabled, true)
+    assert.equal(unavailable.hasAttribute('aria-disabled'), false)
+  } finally { dom.window.close() }
+})
+
 test('generates from the changed dropdown snapshot, blocks double starts, and retries after errors', async () => {
   const dom = new JSDOM('<lia-mathpath-lernpfad></lia-mathpath-lernpfad>')
   try {
@@ -87,15 +153,24 @@ test('generates from the changed dropdown snapshot, blocks double starts, and re
     assert.equal(calls[0].request.recommendation.targetLevel, 'Experte')
     assert.ok(calls[0].signal instanceof AbortSignal)
     assert.ok([...host.shadowRoot.querySelectorAll('button.open-course')].every(control => control.disabled))
+    assert.equal(button.getAttribute('aria-busy'), 'true')
+    assert.equal(section.querySelector('.course-status').dataset.state, 'busy')
+    assert.equal(section.querySelector('.course-status').getAttribute('role'), 'status')
+    assert.equal(section.querySelector('.course-status').getAttribute('aria-atomic'), 'true')
     finish()
     await tick()
     assert.match(section.querySelector('.course-status').textContent, /neuen Fenster/)
+    assert.equal(section.querySelector('.course-status').dataset.state, 'success')
+    assert.equal(button.hasAttribute('aria-busy'), false)
     assert.equal(button.disabled, false)
 
     fail = true
     button.click()
     await tick()
     assert.match(section.querySelector('.course-status').textContent, /Nur drei/)
+    assert.equal(section.querySelector('.course-status').dataset.state, 'error')
+    assert.equal(section.querySelector('.course-status').getAttribute('role'), 'alert')
+    assert.equal(section.querySelector('.course-status').getAttribute('aria-live'), 'assertive')
     assert.equal(button.disabled, false)
     fail = false
     button.click()
@@ -151,6 +226,8 @@ test('Send collection and grading show recommendations but cannot start a course
       assert.ok(buttons.every(button => button.disabled))
       assert.ok([...host.shadowRoot.querySelectorAll('.course-status')]
         .every(status => /freigegebenen Auswertung/.test(status.textContent)))
+      assert.ok([...host.shadowRoot.querySelectorAll('.course-status')]
+        .every(status => status.dataset.state === 'blocked'))
       buttons.forEach(button => button.click())
       await tick()
       assert.equal(opens, 0)

@@ -1,6 +1,6 @@
 <!--
 author:   MINT-the-GAP; Martin Lommatzsch
-version:  0.0.12
+version:  0.0.13
 language: de
 edit:     true
 comment:  LiaScript plugin for reusable math path components.
@@ -302,7 +302,9 @@ Ab **MathPath 0.0.12** besitzt jedes Angebot zusätzlich genau den Button
 „Kurs mit 4 Aufgaben öffnen“. Er verwendet das aktuell gewählte Thema und das
 angezeigte Niveau, öffnet eine normale LiaScript-Kursansicht in einem neuen
 Fenster und lässt den Ausgangskurs unverändert. Der LiveEditor wird dabei nicht
-geöffnet.
+geöffnet. Ab **MathPath 0.0.13** verwendet die Lernpfad-Oberfläche die kompakten,
+themefähigen Bedienelemente der MINT-the-GAP-Templates; Status, Hinweise und
+Fehler bleiben dabei für Tastatur und Screenreader eindeutig zugeordnet.
 
 Startkurs mit MathPath, Freeze und Resetter:
 
@@ -443,7 +445,7 @@ Abschlussfolie mit `@Lernpfad` angefügt. MathPath fügt keine Abgabe,
 Auswertung, Sperre oder Send-Konfiguration hinzu.
 
 Geöffnet wird ein Link der Form
-`https://mint-the-gap.github.io/Aufgabensammlung/course.html#course=…`.
+`https://mint-the-gap.github.io/Aufgabensammlung/course.html?v=1.0.0#course=…`.
 Der Hash enthält ausschließlich das strukturierte Manifest mit vier öffentlichen
 Aufgaben-URLs, Thema, Angebot und Niveau. Der dortige Player lädt diese
 öffentlichen Quellen, baut denselben Markdown erneut und übergibt ihn unter einer
@@ -463,11 +465,13 @@ anderer Folien werden gelesen; `@resetter` wird beim nächsten Klick berücksich
 
 Eine gespeicherte richtige Prüfung gilt als richtig; eine noch nicht richtig
 geprüfte Aufgabe mit Fehlversuch als falsch. Ein ausdrücklich gespeicherter
-Datensatz ohne Prüfung gilt als unbearbeitet. **Ein fehlender Datensatz gilt
-als nicht auswertbar.** Das betrifft insbesondere frische oder unbesuchte
-Folien: LiaScript schreibt deren Daten nicht immer vor der ersten Prüfung.
-Aufgedeckte Lösungen gelten nicht als Nachweis einer eigenen richtigen Antwort.
-Die native Eigenschaft `score` wird nicht als Richtigkeitsquote verwendet.
+Datensatz ohne Prüfung und ein fehlender Datensatz der passenden Kursversion
+gelten als **unbearbeitet**. Damit werden auch frische oder unbesuchte Aufgaben
+wie ursprünglich vorgesehen gemeinsam mit Fehlversuchen als Übungsbedarf
+gerankt. Ein vorhandener, aber strukturell unpassender Datensatz bleibt dagegen
+nicht auswertbar. Aufgedeckte Lösungen gelten nicht als Nachweis einer eigenen
+richtigen Antwort. Die native Eigenschaft `score` wird nicht als
+Richtigkeitsquote verwendet.
 
 In Freeze werden nach Freigabe der wiederhergestellte Snapshot und aktuelle
 manuelle Korrekturen gelesen. Teilweise richtig ist anhand einer manuellen
@@ -478,10 +482,13 @@ ein ausdrücklicher nativer Quizstand bleibt auch bei 0 BE verwertbar.
 
 Vor der Send-Freigabe und während der automatischen Bewertung werden keine
 Richtig-/Falsch-Ergebnisse oder Schwächen ausgegeben. Themen und ausdrücklich
-angegebene Niveaus dürfen bereits angezeigt werden. Ältere Freeze-Versionen
-ohne passende lesende Schnittstelle liefern keinen verlässlich zugeordneten
-Lernstand. Der oben dokumentierte Send-Sonderfall mit geöffneten Explain-Hinweisen
-bleibt bestehen; der Lernpfad repariert oder verändert keine Freeze-Bewertung.
+angegebene Niveaus dürfen bereits angezeigt werden. Bei älteren Freeze-Versionen
+ohne passende lesende Schnittstelle bleibt der gewöhnliche, nicht eingefrorene
+Kurs über den nativen LiaScript-Lernstand auswertbar. Ein eingefrorener oder im
+Send-Modus geschützter Zustand bleibt ohne passenden Freeze-Snapshot dagegen
+bewusst nicht auswertbar. Der oben dokumentierte Send-Sonderfall mit geöffneten
+Explain-Hinweisen bleibt bestehen; der Lernpfad repariert oder verändert keine
+Freeze-Bewertung.
 
 Voraussetzung ist eine erreichbare Markdown-Kursquelle mit Kursversion. Das gilt
 auch für die vom Aufgabensammlungs-Player bereitgestellte exakte

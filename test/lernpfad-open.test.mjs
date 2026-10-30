@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  generateAndOpenLearningCourse, LearningCourseOpenError
+  DIRECT_COURSE_RELEASE, generateAndOpenLearningCourse, LearningCourseOpenError
 } from '../src/lernpfad-open.ts'
+import { SHARED_COURSE_RELEASE } from '../src/lernpfad-shared.ts'
 
-const target = 'https://mint-the-gap.github.io/Aufgabensammlung/course.html#course=%7B%22v%22%3A1%7D'
+const target = 'https://mint-the-gap.github.io/Aufgabensammlung/course.html?v=1.0.0#course=%7B%22v%22%3A1%7D'
+
+test('keeps the direct course shell aligned with the shared runtime release', () => {
+  assert.equal(DIRECT_COURSE_RELEASE, SHARED_COURSE_RELEASE)
+})
 
 function browser() {
   const calls = []
@@ -45,7 +50,8 @@ test('reports blocked popups before generation starts', async () => {
 test('closes the reserved page after generation or target validation fails', async () => {
   for (const generate of [
     async () => { throw new Error('Katalog fehlt') },
-    async () => ({ openingTarget: 'javascript:alert(1)' })
+    async () => ({ openingTarget: 'javascript:alert(1)' }),
+    async () => ({ openingTarget: 'https://mint-the-gap.github.io/Aufgabensammlung/course.html?v=next#course=x' })
   ]) {
     const harness = browser()
     await assert.rejects(generateAndOpenLearningCourse(generate, harness.window))

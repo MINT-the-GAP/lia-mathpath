@@ -319,13 +319,13 @@ async function stressPublicApi(page, host, perOffer) {
       /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md$/gm), 1)
     assert.equal(count(course.markdown, /^@Lernpfad$/gm), 1)
     assert.match(course.openingTarget,
-      /^https:\/\/mint-the-gap\.github\.io\/Aufgabensammlung\/course\.html#course=/)
+      /^https:\/\/mint-the-gap\.github\.io\/Aufgabensammlung\/course\.html\?v=1\.0\.0#course=/)
   }
 
   const sharedScripts = await page.evaluate(prefix =>
     [...document.scripts].map(script => script.src)
       .filter(src => src.startsWith(prefix) &&
-        /\/assets\/course-(?:source|generator|catalog)\.js$/.test(src)),
+        /\/assets\/course-(?:source|generator|catalog)\.js\?v=1\.0\.0$/.test(src)),
   pagesBase)
   assert.equal(sharedScripts.length, 3)
   assert.equal(new Set(sharedScripts).size, 3)
@@ -389,7 +389,7 @@ async function openOffer(context, page, host, type, inspectCourse) {
   assert.equal(manifest.level, expected.manifestLevel)
   assert.equal(manifest.urls.length, 4)
   assert.equal(new Set(manifest.urls).size, 4)
-  assert.equal(openingUrl.search, '')
+  assert.equal(openingUrl.search, '?v=1.0.0')
   assert.equal(await popup.evaluate(() => window.opener === null), true)
 
   await page.waitForTimeout(150)

@@ -1,6 +1,7 @@
 const MAX_DIRECT_COURSE_URL_LENGTH = 32_000;
 const DIRECT_COURSE_ORIGIN = 'https://mint-the-gap.github.io';
 const DIRECT_COURSE_PATH = '/Aufgabensammlung/course.html';
+export const DIRECT_COURSE_RELEASE = '1.0.0';
 
 export type LearningCourseOpenErrorCode =
   | 'POPUP_BLOCKED'
@@ -31,8 +32,9 @@ function validateOpeningTarget(value: string): string {
   }
   try {
     const url = new URL(target);
+    const supportedSearch = url.search === '' || url.search === `?v=${DIRECT_COURSE_RELEASE}`;
     if (url.origin !== DIRECT_COURSE_ORIGIN || url.pathname !== DIRECT_COURSE_PATH ||
-        url.search || !url.hash.startsWith('#course=')) throw new Error('unexpected target');
+        !supportedSearch || !url.hash.startsWith('#course=')) throw new Error('unexpected target');
     return url.href;
   } catch (_) {
     throw new LearningCourseOpenError(

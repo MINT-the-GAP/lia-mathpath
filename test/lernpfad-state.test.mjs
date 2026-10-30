@@ -26,8 +26,11 @@ test('native score:1 never turns a failed or untouched task into a correct answe
   assert.equal(classifyNativeLearningState(task({ points: 0 }), undefined).status, 'unavailable')
 })
 
-test('missing section records, wrong versions, and shifted vectors remain unavailable', () => {
-  for (const data of [empty(), tables([native(1, 1)], 1), tables([native(1, 1)], 3), tables([]), tables([native(1, 1), native(0, 0)])]) {
+test('missing compatible records are unanswered while malformed vectors remain unavailable', () => {
+  for (const data of [empty(), tables([native(1, 1)], 1), tables([native(1, 1)], 3)]) {
+    assert.equal(projectLearningState(course(), data).states[0].status, 'unanswered')
+  }
+  for (const data of [tables([]), tables([native(1, 1), native(0, 0)])]) {
     assert.equal(projectLearningState(course(), data).states[0].status, 'unavailable')
   }
   assert.equal(nativeCourseVersion('2.3.4'), 2)
@@ -158,11 +161,24 @@ test('checks deferred Send again after an asynchronous database read', async () 
   assert.equal(result.states[0].status, 'unavailable')
 })
 
+test('a legacy Freeze import without a protected phase keeps native live state available', async () => {
+  const { calls, factory } = fakeDatabase(tables([native(1, 1)]).quiz)
+  const win = { indexedDB: factory, __liaFreezeV2LifecycleV1__: { bootScheduled: true },
+    __liaSubmissionDemo: {},
+    document: { getElementById: () => ({}), body: { classList: { contains: () => false } } } }
+  const result = await readLearningState(course(), win)
+  assert.equal(result.phase, 'live')
+  assert.equal(result.states[0].status, 'correct')
+  assert.deepEqual(calls.opens, [course().url])
+})
+
 test('never opens native storage in Send collection or in old frozen review', async () => {
   let opened = 0
+  let frozen = false
   const win = { indexedDB: { open: () => { opened++; throw new Error('not allowed') } },
-    document: { getElementById: () => null, body: { classList: { contains: () => false } } } }
+    document: { getElementById: () => null, body: { classList: { contains: value => frozen && value === 'lia-course-frozen' } } } }
   assert.equal((await readLearningState(course({ sendMode: true }), win)).phase, 'collect')
+  frozen = true
   win.__liaFreezeV2LifecycleV1__ = {}
   assert.equal((await readLearningState(course(), win)).phase, 'unavailable')
   assert.equal(opened, 0)

@@ -83,8 +83,15 @@ type RuntimeWindow = Window & typeof globalThis & {
 };
 
 export const SHARED_COURSE_BASE_URL = 'https://mint-the-gap.github.io/Aufgabensammlung/';
+export const SHARED_COURSE_RELEASE = '1.0.0';
 const LOAD_TIMEOUT_MS = 20_000;
 const loads = new WeakMap<Document, Promise<SharedCourseRuntime>>();
+
+function releasedAssetUrl(baseUrl: string, path: string): string {
+  const url = new URL(path, baseUrl);
+  url.searchParams.set('v', SHARED_COURSE_RELEASE);
+  return url.href;
+}
 
 function runtimeWindow(doc: Document): RuntimeWindow {
   const win = doc.defaultView;
@@ -138,6 +145,7 @@ function validateRuntime(win: RuntimeWindow): Omit<SharedCourseRuntime, 'baseUrl
     throw new Error('Der gemeinsame Kurs-Assembler ist nicht verfügbar.');
   }
   if (!generator || generator.schema !== 'schullia-course-generator' || generator.version !== 1 ||
+      generator.release !== SHARED_COURSE_RELEASE ||
       typeof generator.validateCatalog !== 'function' || typeof generator.generate !== 'function' ||
       typeof generator.learningPathSourceOptions !== 'function' ||
       typeof generator.buildDirectCourseUrl !== 'function') {
@@ -164,11 +172,11 @@ export function loadSharedCourseRuntime(
   const normalizedBase = new URL(baseUrl, doc.baseURI).href.replace(/\/?$/, '/');
   const win = runtimeWindow(doc);
   const promise = (async () => {
-    await loadClassicScript(doc, new URL('assets/course-source.js', normalizedBase).href,
+    await loadClassicScript(doc, releasedAssetUrl(normalizedBase, 'assets/course-source.js'),
       () => win.SchulLiaCourseSource !== undefined);
-    await loadClassicScript(doc, new URL('assets/course-generator.js', normalizedBase).href,
+    await loadClassicScript(doc, releasedAssetUrl(normalizedBase, 'assets/course-generator.js'),
       () => win.SchulLiaCourseGenerator !== undefined);
-    await loadClassicScript(doc, new URL('assets/course-catalog.js', normalizedBase).href,
+    await loadClassicScript(doc, releasedAssetUrl(normalizedBase, 'assets/course-catalog.js'),
       () => win.SchulLiaCourseCatalog !== undefined);
     return { ...validateRuntime(win), baseUrl: normalizedBase };
   })();
