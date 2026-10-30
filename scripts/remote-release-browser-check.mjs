@@ -20,6 +20,8 @@ const readmeUrl = process.env.MATHPATH_REMOTE_README_URL ||
 const versionToken = release.replaceAll('.', 'x')
 const expectedBundleReference = `./dist/index.v${versionToken}.js`
 const expectedBundleUrl = new URL(expectedBundleReference, readmeUrl).toString()
+const expectedBundleRequestUrl = new URL(expectedBundleUrl)
+expectedBundleRequestUrl.searchParams.set('v', release)
 const dataCoursePrefix =
   'data:text/plain;charset=utf-8;Content-Encoding=gzip;base64,'
 const { chromium, expect: baseExpect } =
@@ -188,6 +190,7 @@ async function run() {
     release,
     readmeUrl,
     expectedBundleUrl,
+    expectedBundleRequestUrl: expectedBundleRequestUrl.toString(),
     viewer,
     checks: [],
     requests: [],
@@ -313,12 +316,12 @@ async function run() {
     })
 
     const bundleResponses = report.responses.filter(response =>
-      response.url === expectedBundleUrl)
+      response.url === expectedBundleRequestUrl.toString())
     assert.ok(report.requests.includes(readmeUrl),
       `The browser did not request the versioned README URL: ${readmeUrl}`)
     assert.ok(bundleResponses.some(response => response.status >= 200 &&
       response.status < 300),
-      `The browser did not load the deployed versioned bundle: ${expectedBundleUrl}`)
+      `The browser did not load the deployed versioned bundle: ${expectedBundleRequestUrl}`)
     assert.equal(report.requests.some(url =>
       /\/dist\/index\.js(?:[?#]|$)/.test(url)), false,
       'The browser unexpectedly requested the mutable unversioned dist/index.js')
