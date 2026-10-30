@@ -278,7 +278,7 @@ async function run() {
     )
     assert.equal(manifest.urls.length, 4)
     assert.equal(new Set(manifest.urls).size, 4)
-    assert.equal(openingUrl.search, '?v=1.0.0')
+    assert.equal(openingUrl.search, '?v=1.0.1')
     assert.equal(await popup.evaluate(() => window.opener === null), true)
     const openCalls = await page.evaluate(() => window.__MATHPATH_OPEN_CALLS__)
     assert.equal(openCalls.length, 1)

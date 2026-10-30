@@ -403,7 +403,7 @@ versionierte Browser-Schnittstelle der Aufgabensammlung:
 
 - `assets/course-catalog.js` mit Schema `schullia-course-catalog`, Version 1,
 - `assets/course-generator.js` mit Schema `schullia-course-generator`,
-  Version 1 beziehungsweise Release 1.0.0,
+  Version 1 beziehungsweise Release 1.0.1,
 - `assets/course-source.js` für den gemeinsamen Markdown-Aufbau.
 
 Die `index.html` der Aufgabensammlung und `@Lernpfad` rufen dieselben
@@ -445,7 +445,7 @@ Abschlussfolie mit `@Lernpfad` angefügt. MathPath fügt keine Abgabe,
 Auswertung, Sperre oder Send-Konfiguration hinzu.
 
 Geöffnet wird ein Link der Form
-`https://mint-the-gap.github.io/Aufgabensammlung/course.html?v=1.0.0#course=…`.
+`https://mint-the-gap.github.io/Aufgabensammlung/course.html?v=1.0.1#course=…`.
 Der Hash enthält ausschließlich das strukturierte Manifest mit vier öffentlichen
 Aufgaben-URLs, Thema, Angebot und Niveau. Der dortige Player lädt diese
 öffentlichen Quellen, baut denselben Markdown erneut und übergibt ihn unter einer
