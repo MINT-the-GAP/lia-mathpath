@@ -1,5 +1,8 @@
 import { parseAssignmentDetails } from './adetails';
-import type { LearningCourse, LearningLevel, LearningTask } from './lernpfad-types';
+import type {
+  LearningContextSource, LearningCourse, LearningCourseContext, LearningLevel,
+  LearningSchoolType, LearningTask
+} from './lernpfad-types';
 
 type NativeTable = 'quiz' | 'survey';
 type SourceLine = { text: string; line: number; dynamic?: boolean; nativeTable?: NativeTable };
@@ -26,6 +29,166 @@ const NON_QUIZ_MACROS = new Set([
   'adetails', 'explain', 'tooltip', 'lernpfad', 'resetter', 'abgabe', 'auswertung',
   'input', 'output', 'uid', 'canvas', 'algebrite.check', 'algebrite.check_expression'
 ]);
+const CONTEXT_SOURCES: LearningContextSource[] = ['header-tags', 'comment', 'title', 'url'];
+
+function emptyCourseContext(): LearningCourseContext {
+  return { grade: null, gradeSource: null, schoolType: null, schoolTypeSource: null, headerTags: [] };
+}
+
+function headerFieldParts(lines: string[], fieldName: string): string[] {
+  const parts: string[] = [];
+  let active = false;
+  for (const raw of lines) {
+    const line = raw.replace(/^\s*<!--\s?/, '').replace(/\s*-->\s*$/, '');
+    const field = line.match(/^\s*([a-z][\w-]*):\s*(.*?)\s*$/i);
+    if (field) {
+      active = field[1].toLowerCase() === fieldName.toLowerCase();
+      if (active && field[2] && !/^[>|][+-]?$/.test(field[2])) parts.push(field[2]);
+      continue;
+    }
+    if (active && /^\s+\S/.test(line)) {
+      const continuation = line.trim().replace(/^-\s*/, '');
+      if (continuation) parts.push(continuation);
+    } else if (line.trim()) active = false;
+  }
+  return parts;
+}
+
+function splitHeaderTagList(value: string): string[] {
+  const source = value.trim().replace(/^\[([\s\S]*)\]$/, '$1');
+  const values: string[] = [];
+  let start = 0;
+  let quote = '';
+  for (let index = 0; index < source.length; index++) {
+    const character = source[index];
+    if (character === '\\') { index++; continue; }
+    if (quote) {
+      if (character === quote) quote = '';
+      continue;
+    }
+    if ((character === '`' || character === '"' || character === "'") &&
+        source.slice(start, index).trim() === '') {
+      quote = character;
+    } else if (character === ',' || character === ';') {
+      values.push(source.slice(start, index));
+      start = index + 1;
+    }
+  }
+  values.push(source.slice(start));
+  return values;
+}
+
+function parseHeaderTags(parts: string[]): string[] {
+  const tags: string[] = [];
+  const seen = new Set<string>();
+  for (const part of parts) {
+    for (const raw of splitHeaderTagList(part)) {
+      const tag = raw.trim().replace(/^([`'"])([\s\S]*)\1$/, '$2').trim();
+      const identity = tag.normalize('NFC').toLocaleLowerCase('de');
+      if (!tag || seen.has(identity)) continue;
+      seen.add(identity);
+      tags.push(tag);
+    }
+  }
+  return tags;
+}
+
+function decodedEvidence(value: string): string {
+  try { return decodeURIComponent(value); } catch { return value; }
+}
+
+function validGrade(value: string): number | null {
+  const grade = Number(value);
+  return Number.isInteger(grade) && grade >= 1 && grade <= 13 ? grade : null;
+}
+
+function gradesFromText(value: string): number[] {
+  const grades = new Set<number>();
+  const label = '(?:klasse(?:n|nstufe)?|jahrgang(?:sstufe|stufe)?|jg\\.?|kl\\.?)';
+  const expressions = [
+    new RegExp('\\b' + label + '\\s*[:=._-]?\\s*(\\d{1,2})(?:\\s*(?:-|\\u2013|\\u2014|/|bis|und)\\s*(\\d{1,2}))?', 'gi'),
+    new RegExp('\\b(\\d{1,2})(?:\\s*(?:-|\\u2013|\\u2014|/|bis|und)\\s*(\\d{1,2}))?\\s*\\.?\\s*' + label + '\\b', 'gi')
+  ];
+  for (const expression of expressions) {
+    let match: RegExpExecArray | null;
+    while ((match = expression.exec(value)) !== null) {
+      for (const candidate of match.slice(1, 3)) {
+        const grade = candidate ? validGrade(candidate) : null;
+        if (grade !== null) grades.add(grade);
+      }
+    }
+  }
+  return [...grades];
+}
+
+function gradesFromUrl(value: string): number[] {
+  const decoded = decodedEvidence(value);
+  const grades = new Set(gradesFromText(decoded.replace(/[_/]+/g, ' ')));
+  const expressions = [
+    /(?:^|[\/_-])lia[._-]?(\d{1,2})(?=[._\/-])/gi,
+    /\/(\d{1,2})\/(?:mathematik|mathe)(?:\/|$)/gi,
+    /\/(?:mathematik|mathe)\/(\d{1,2})(?:\/|$)/gi
+  ];
+  for (const expression of expressions) {
+    let match: RegExpExecArray | null;
+    while ((match = expression.exec(decoded)) !== null) {
+      const grade = validGrade(match[1]);
+      if (grade !== null) grades.add(grade);
+    }
+  }
+  return [...grades];
+}
+
+function schoolTypesFromText(value: string): LearningSchoolType[] {
+  let normalized = decodedEvidence(value).normalize('NFC').toLocaleLowerCase('de').replace(/[_/]+/g, ' ');
+  const schools = new Set<LearningSchoolType>();
+  const bgy = /\bberuf\w*\s+gymnasi(?:um|en)\b|\bberufsgymnasi(?:um|en)\b|\bbgy\b/gi;
+  if (bgy.test(normalized)) schools.add('bgy');
+  normalized = normalized.replace(bgy, ' ');
+  if (/\boberschul(?:e|en)\b/i.test(normalized)) schools.add('oberschule');
+  if (/\bgymnasi(?:um|en)\b/i.test(normalized)) schools.add('gymnasium');
+  return [...schools];
+}
+
+function resolveContextValue<T>(
+  values: Record<LearningContextSource, T[]>, kind: 'Klassenstufen' | 'Schularten', warnings: string[]
+): { value: T | null; source: LearningContextSource | null } {
+  const locations: Record<LearningContextSource, string> = {
+    'header-tags': 'den Kurskopf-Tags', comment: 'dem Kurskommentar',
+    title: 'dem Kurstitel', url: 'der Kurs-URL'
+  };
+  for (const source of CONTEXT_SOURCES) {
+    const candidates = [...new Set(values[source])];
+    if (!candidates.length) continue;
+    if (candidates.length > 1) {
+      warnings.push(`In ${locations[source]} sind mehrere ${kind} angegeben; der entsprechende Kurskontext bleibt unbekannt.`);
+      return { value: null, source: null };
+    }
+    return { value: candidates[0], source };
+  }
+  return { value: null, source: null };
+}
+
+function inferCourseContext(
+  headerTags: string[], comment: string | null, title: string | null, url: string, warnings: string[]
+): LearningCourseContext {
+  const evidence: Record<LearningContextSource, string> = {
+    'header-tags': headerTags.join('\n'), comment: comment || '', title: title || '', url
+  };
+  const gradeValues = {} as Record<LearningContextSource, number[]>;
+  const schoolValues = {} as Record<LearningContextSource, LearningSchoolType[]>;
+  for (const source of CONTEXT_SOURCES) {
+    gradeValues[source] = source === 'url' ? gradesFromUrl(evidence[source]) : gradesFromText(evidence[source]);
+    schoolValues[source] = schoolTypesFromText(evidence[source]);
+  }
+  const grade = resolveContextValue(gradeValues, 'Klassenstufen', warnings);
+  const school = resolveContextValue(schoolValues, 'Schularten', warnings);
+  return {
+    grade: grade.value, gradeSource: grade.source,
+    schoolType: school.value, schoolTypeSource: school.source,
+    headerTags: [...headerTags]
+  };
+}
 
 function parseLevel(value: string): LearningLevel | null {
   const normalized = value.trim().toLowerCase();
@@ -134,10 +297,15 @@ function isAsciiFence(run: string, info: string): boolean {
  * interpreter: unsupported expansion makes that section's native mapping unsafe.
  */
 export function parseLearningCourse(markdown: string, url: string): LearningCourse {
-  const course: LearningCourse = { url, version: null, tasks: [], warnings: [], sendMode: false };
+  const course: LearningCourse = {
+    url, version: null, context: emptyCourseContext(), tasks: [], warnings: [], sendMode: false
+  };
   const lines = String(markdown || '').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n');
   let bodyStart = 0;
   let courseLevel: LearningLevel | null = null;
+  const headerLines: string[] = [];
+  let headerTags: string[] = [];
+  let headerComment: string | null = null;
   const first = lines.findIndex(line => line.trim() !== '');
   if (first >= 0 && /^\s*<!--/.test(lines[first])) {
     let macro = false;
@@ -147,6 +315,7 @@ export function parseLearningCourse(markdown: string, url: string): LearningCour
       if (macro && /^\s*@end\s*$/.test(line)) macro = false;
       else if (!macro && /^\s*@[a-z_][\w.-]*\s*$/i.test(line) && !/^\s*@end/.test(line)) macro = true;
       if (!macro) {
+        headerLines.push(line);
         const version = line.match(/^\s*version:\s*(.*?)\s*$/i);
         if (version) course.version = version[1] || null;
         const level = line.match(/^\s*lernpfad-level:\s*(.*?)\s*$/i);
@@ -157,8 +326,11 @@ export function parseLearningCourse(markdown: string, url: string): LearningCour
         if (line.includes('-->')) { bodyStart = index + 1; closed = true; break; }
       }
     }
+    headerTags = parseHeaderTags(headerFieldParts(headerLines, 'tags'));
+    headerComment = headerFieldParts(headerLines, 'comment').join(' ').trim() || null;
     if (!closed) {
       course.warnings.push('Der Kurskopf ist nicht vollständig geschlossen; Aufgaben können nicht zugeordnet werden.');
+      course.context = inferCourseContext(headerTags, headerComment, null, url, course.warnings);
       return course;
     }
   }
@@ -168,6 +340,7 @@ export function parseLearningCourse(markdown: string, url: string): LearningCour
   let fence: Fence | null = null;
   let comment = false;
   let script = false;
+  let courseTitle: string | null = null;
   function markUnsafe(sourceLine: number): void {
     if (!current) return;
     current.unsafe = true;
@@ -248,7 +421,9 @@ export function parseLearningCourse(markdown: string, url: string): LearningCour
         script = true;
       }
     }
-    if (/^ {0,3}#{1,6}\s+/.test(visible)) {
+    const heading = visible.match(/^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$/);
+    if (heading) {
+      if (courseTitle === null) courseTitle = heading[1].trim() || null;
       current = { index: sections.length, lines: [], level: courseLevel, unsafe: false };
       sections.push(current);
     } else if (current) current.lines.push({ text: visible, line: index + 1 });
@@ -333,6 +508,7 @@ export function parseLearningCourse(markdown: string, url: string): LearningCour
     }
     course.tasks.push(...tasks);
   }
+  course.context = inferCourseContext(headerTags, headerComment, courseTitle, url, course.warnings);
   if (!sections.length && markdown.trim()) course.warnings.push('Im Kurstext wurden keine verlässlich zuordenbaren Folienüberschriften gefunden.');
   return course;
 }

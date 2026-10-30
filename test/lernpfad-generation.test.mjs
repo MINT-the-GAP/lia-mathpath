@@ -33,6 +33,11 @@ const report = (changes = {}) => {
   const algebra = topic('Algebra')
   return {
     courseUrl,
+    context: {
+      grade: 7, gradeSource: 'header-tags',
+      schoolType: 'gymnasium', schoolTypeSource: 'header-tags',
+      headerTags: ['Klasse 7', 'Gymnasium']
+    },
     phase: 'live',
     topics: [algebra],
     weaknessTopics: [algebra],
@@ -80,6 +85,7 @@ function harness(initialReport = report(), generateImpl = async () => sharedOutp
   let currentReport = initialReport
   let reads = 0
   const calls = []
+  const curriculumCalls = []
   const sourceManifests = []
   const directManifests = []
   const runtime = {
@@ -90,6 +96,22 @@ function harness(initialReport = report(), generateImpl = async () => sharedOutp
     },
     assembler: { build: () => '' },
     generator: {
+      deriveCurriculumContext(_catalog, options) {
+        curriculumCalls.push(structuredClone(options))
+        const observedThemes = [...options.observedThemes]
+        const priorThemes = ['Grundrechenarten']
+        return {
+          observedThemes,
+          priorThemes,
+          allowedThemes: [...observedThemes, ...priorThemes],
+          curriculumThemes: ['Algebra', 'Grundrechenarten', 'Negative Zahlen'],
+          grade: options.grade ?? 5,
+          gradeSource: options.grade == null ? 'themes' : 'explicit',
+          schoolType: options.schoolType ?? null,
+          unmappedObservedThemes: [],
+          gradeConflicts: []
+        }
+      },
       async generate(_catalog, request, options) {
         calls.push(request)
         return generateImpl(request, {
@@ -119,6 +141,7 @@ function harness(initialReport = report(), generateImpl = async () => sharedOutp
   })
   return {
     calls,
+    curriculumCalls,
     directManifests,
     generate,
     reads: () => reads,
@@ -139,9 +162,16 @@ test('maps all three offers to the one shared strict-count policy and revalidate
     const result = await h.generate({ courseUrl, recommendation: recommendation(type, level) }, { seed: 'fixed' })
     assert.equal(h.reads(), 2)
     assert.equal(h.calls.length, 1)
+    assert.deepEqual(h.curriculumCalls, [{
+      observedThemes: ['Algebra'], grade: 7, schoolType: 'gymnasium'
+    }])
+    const expectedAllowed = type === 'weakness'
+      ? ['Algebra']
+      : ['Algebra', 'Grundrechenarten']
     assert.deepEqual(h.calls[0], {
       themes: ['Algebra'], blockedThemes: [],
-      allowedThemes: ['Algebra'], curriculumThemes: ['Algebra', 'Negative Zahlen'],
+      allowedThemes: expectedAllowed,
+      curriculumThemes: ['Algebra', 'Grundrechenarten', 'Negative Zahlen'],
       count: 4, group, strictCount: true, seed: 'fixed'
     })
     assert.equal(h.directManifests[0].offer, offer)
@@ -190,6 +220,25 @@ test('rejects a changed evidenced topic context after shared generator I/O', asy
     controls.setReport(report({
       topics: [algebra, topic('Geometrie')],
       weaknessTopics: [algebra]
+    }))
+    return sharedOutput()
+  })
+  await assert.rejects(
+    h.generate({ courseUrl, recommendation: recommendation('practice', 'Fortgeschritten') }),
+    error => error instanceof LearningGenerationError && error.code === 'STALE_RECOMMENDATION' &&
+      /Lernkontext/.test(error.message)
+  )
+  assert.equal(h.reads(), 2)
+})
+
+test('rejects a changed grade or school context after shared generator I/O', async () => {
+  const h = harness(report(), async (_query, controls) => {
+    controls.setReport(report({
+      context: {
+        grade: 6, gradeSource: 'header-tags',
+        schoolType: 'oberschule', schoolTypeSource: 'header-tags',
+        headerTags: ['Klasse 6', 'Oberschule']
+      }
     }))
     return sharedOutput()
   })
@@ -320,10 +369,12 @@ test('builds source options and direct manifest around the same shared selection
   assert.equal(receivedOptions.assembler.build instanceof Function, true)
   assert.deepEqual(receivedOptions.sourceOptions, { header: ['lernpfad-level: einsteiger'] })
   assert.deepEqual(h.sourceManifests, [{
-    v: 1, kind: 'lernpfad', offer: 'schwaechen-ueben', topic: 'Algebra', level: 'einsteiger', urls: []
+    v: 1, kind: 'lernpfad', offer: 'schwaechen-ueben', topic: 'Algebra', level: 'einsteiger',
+    grade: 7, schoolType: 'gymnasium', urls: []
   }])
   assert.deepEqual(h.directManifests, [{
     v: 1, kind: 'lernpfad', offer: 'schwaechen-ueben', topic: 'Algebra', level: 'einsteiger',
+    grade: 7, schoolType: 'gymnasium',
     urls: Array.from({ length: 4 }, (_, index) => `https://example.test/task-${index + 1}.md`)
   }])
   assert.equal(result.catalogVersion, 1)

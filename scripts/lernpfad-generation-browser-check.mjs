@@ -57,6 +57,7 @@ function originalCourseSource() {
   ]
   return [
     '<!--', 'author: Browser Regression', 'version: 1.0.0', 'language: de',
+    'tags: Mathematik, Klasse 7, Gymnasium',
     'mode: Presentation', 'lernpfad-level: Einsteiger',
     'import: ' + mathPathUrl, '-->', '',
     '# Ausgangskurs zur Lernpfad-Generierung', '',
@@ -330,8 +331,14 @@ async function run() {
     assert.ok(encodedManifest)
     const manifest = JSON.parse(encodedManifest)
     assert.deepEqual(
-      { kind: manifest.kind, offer: manifest.offer, topic: manifest.topic, level: manifest.level },
-      { kind: 'lernpfad', offer: 'weitere-uebungen', topic: 'Grundrechenarten', level: 'einsteiger' }
+      {
+        kind: manifest.kind, offer: manifest.offer, topic: manifest.topic, level: manifest.level,
+        grade: manifest.grade, schoolType: manifest.schoolType
+      },
+      {
+        kind: 'lernpfad', offer: 'weitere-uebungen', topic: 'Grundrechenarten',
+        level: 'einsteiger', grade: 7, schoolType: 'gymnasium'
+      }
     )
     assert.equal(manifest.urls.length, 4)
     assert.equal(new Set(manifest.urls).size, 4)
@@ -343,16 +350,33 @@ async function run() {
     const evidencedTopics = new Set(initialReport.topics.map(item =>
       item.topic.trim().replace(/\s+/g, ' ').normalize('NFC').toLocaleLowerCase('de-DE')
     ))
+    const sharedGenerator = createRequire(path.join(root, 'package.json'))(
+      path.join(sharedRoot, 'assets', 'course-generator.js')
+    )
+    const curriculumContext = sharedGenerator.deriveCurriculumContext(sharedCatalog, {
+      observedThemes: initialReport.topics.map(item => item.topic),
+      grade: initialReport.context.grade,
+      schoolType: initialReport.context.schoolType
+    })
+    const allowedTopics = new Set(curriculumContext.allowedThemes.map(item =>
+      item.trim().replace(/\s+/g, ' ').normalize('NFC').toLocaleLowerCase('de-DE')
+    ))
+    assert.equal(initialReport.context.grade, 7)
+    assert.equal(initialReport.context.schoolType, 'gymnasium')
+    assert.equal(allowedTopics.has('dezimalzahlen'), true)
+    assert.equal(evidencedTopics.has('dezimalzahlen'), false)
+    assert.equal(allowedTopics.has('negative zahlen'), false)
     const selectedCatalogTasks = manifest.urls.map(url => catalogByUrl.get(url))
     assert.ok(selectedCatalogTasks.every(Boolean))
     assert.ok(selectedCatalogTasks.every(task => task.topics.every(topic =>
-      evidencedTopics.has(topic.trim().replace(/\s+/g, ' ').normalize('NFC').toLocaleLowerCase('de-DE'))
+      allowedTopics.has(topic.trim().replace(/\s+/g, ' ').normalize('NFC').toLocaleLowerCase('de-DE'))
     )))
-    check('Generated URLs stay inside evidenced ADetails context', {
+    check('Generated URLs stay inside observed plus earlier curriculum context', {
       evidencedTopics: [...evidencedTopics],
+      allowedTopics: [...allowedTopics],
       selected: selectedCatalogTasks.map(task => ({ id: task.id, topics: task.topics }))
     })
-    assert.equal(openingUrl.search, '?v=1.0.6')
+    assert.equal(openingUrl.search, '?v=1.0.7')
     const openCalls = await page.evaluate(() => window.__MATHPATH_OPEN_CALLS__)
     assert.equal(openCalls.length, 1)
     assert.deepEqual(openCalls[0], {
@@ -390,6 +414,7 @@ async function run() {
     assert.match(source.body, /\[\[\s*browser-1\s*\]\]\s+@canvas/)
     assert.equal(count(source.body, /@Lernpfad/g), 1)
     assert.match(source.body, /lernpfad-level:\s*Einsteiger/)
+    assert.match(source.body, /^tags:\s*Mathematik, Klasse 7, Gymnasium$/m)
     assert.match(source.body, /points=0;tags=Grundrechenarten, Browser-Tag/)
     assert.match(source.body, /points=1,5;tags=Grundrechenarten, Browser-Tag/)
     assert.match(source.body, /# Dein weiterer Lernpfad/)
@@ -400,7 +425,7 @@ async function run() {
     const intro = source.body.slice(0, source.body.indexOf('# BROWSER_TASK_'))
     assert.equal(count(intro, /^---$/gm), 8)
     assert.equal(count(source.body,
-      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.19$/gm), 1)
+      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.20$/gm), 1)
     assert.deepEqual(
       source.body.match(/^comment:.*$/gm),
       ['comment: Übe das Thema „Grundrechenarten“ auf deinem bisherigen Niveau weiter und gewinne mehr Sicherheit.']

@@ -185,6 +185,86 @@ test('no level or point defaults are invented from ordinary catalog tags', () =>
   assert.deepEqual(course.tasks.map(task => task.points), [null, 0])
 })
 
+test('extracts explicit grade and school context without turning header tags into task topics', () => {
+  const course = parseLearningCourse([
+    '<!--',
+    'tags: Mathematik, Klasse 5, Gymnasium, Addition',
+    'comment: Kurs fuer Klasse 6 an der Oberschule.',
+    '-->',
+    '# Mathematik Klasse 7', '',
+    '[[ 4 ]]', '', '@ADetails(1;Addition)'
+  ].join('\n'), 'https://example.test/Gymnasium/Lia8_42.md')
+  assert.deepEqual(course.context, {
+    grade: 5, gradeSource: 'header-tags',
+    schoolType: 'gymnasium', schoolTypeSource: 'header-tags',
+    headerTags: ['Mathematik', 'Klasse 5', 'Gymnasium', 'Addition']
+  })
+  assert.deepEqual(course.tasks[0].tags, ['Addition'])
+})
+
+test('uses comment, title and known URL shapes only when stronger context evidence is absent', () => {
+  const fromComment = parseLearningCourse([
+    '<!--', 'tags: Mathematik', 'comment: Uebungen fuer die 6. Klasse der Oberschule.', '-->',
+    '# Mathematik Klasse 7 am Gymnasium', '', '[[ 1 ]]'
+  ].join('\n'), 'https://example.test/Gymnasium/Lia8_42.md')
+  assert.deepEqual(
+    [fromComment.context.grade, fromComment.context.gradeSource,
+      fromComment.context.schoolType, fromComment.context.schoolTypeSource],
+    [6, 'comment', 'oberschule', 'comment']
+  )
+
+  const fromTitle = parseLearningCourse(
+    '# Mathematik fuer Klasse 7 am Gymnasium\n\n[[ 1 ]]',
+    'https://example.test/Oberschule/Lia8_42.md'
+  )
+  assert.deepEqual(
+    [fromTitle.context.grade, fromTitle.context.gradeSource,
+      fromTitle.context.schoolType, fromTitle.context.schoolTypeSource],
+    [7, 'title', 'gymnasium', 'title']
+  )
+
+  const fromUrl = parseLearningCourse(
+    '# Mathematik\n\n[[ 1 ]]',
+    'https://example.test/Gymnasium/Lia8_42.md'
+  )
+  assert.deepEqual(
+    [fromUrl.context.grade, fromUrl.context.gradeSource,
+      fromUrl.context.schoolType, fromUrl.context.schoolTypeSource],
+    [8, 'url', 'gymnasium', 'url']
+  )
+})
+
+test('keeps grade and school unknown when the strongest evidence source conflicts', () => {
+  const course = parseLearningCourse([
+    '<!--',
+    'tags: Mathematik, Klasse 5, Jahrgang 7, Oberschule, Gymnasium',
+    'comment: Klasse 6',
+    '-->',
+    '# Klasse 8', '', '[[ 1 ]]', '', '@ADetails(1;Algebra)'
+  ].join('\n'), 'https://example.test/Lia9_42.md')
+  assert.equal(course.context.grade, null)
+  assert.equal(course.context.gradeSource, null)
+  assert.equal(course.context.schoolType, null)
+  assert.equal(course.context.schoolTypeSource, null)
+  assert.match(course.warnings.join(' '), /mehrere Klassenstufen/)
+  assert.match(course.warnings.join(' '), /mehrere Schularten/)
+  assert.deepEqual(course.tasks[0].tags, ['Algebra'])
+})
+
+test('keeps apostrophes inside tags and recognizes plural school names', () => {
+  const course = parseLearningCourse([
+    '<!--',
+    "tags: Euler'sche Gerade, Klasse 7, Gymnasien",
+    '-->',
+    '# Kurs', '', '[[ 1 ]]', '', '@ADetails(1;Geometrie)'
+  ].join('\n'), 'https://example.test/course.md')
+  assert.deepEqual(course.context, {
+    grade: 7, gradeSource: 'header-tags',
+    schoolType: 'gymnasium', schoolTypeSource: 'header-tags',
+    headerTags: ["Euler'sche Gerade", 'Klasse 7', 'Gymnasien']
+  })
+})
+
 test('section level is explicit and resets to course level at the next heading', () => {
   const course = parse([
     '<!--', 'lernpfad-level: Einsteiger', '-->', '# First', '',

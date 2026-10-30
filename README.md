@@ -1,10 +1,10 @@
 <!--
 author:   MINT-the-GAP; Martin Lommatzsch
-version:  0.0.19
+version:  0.0.20
 language: de
 edit:     true
 comment:  LiaScript plugin for reusable math path components.
-script:   ./dist/index.v0x0x19.js
+script:   ./dist/index.v0x0x20.js
 
 
 @Explain: <lia-mathpath-explain data-lia-explain-topic="@0"></lia-mathpath-explain>
@@ -44,20 +44,20 @@ Dieses Repository bildet die technische Basis für den schrittweisen Aufbau von 
 
 
 ``` markdown
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.19
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.20
 ```
 
 
 Der Fokus der ersten Ausbaustufe liegt auf einer stabilen Repo-Struktur (TypeScript Quellcode,
 Parcel Build nach `dist/index.js`, importierbare LiaScript README). Der Build erzeugt zusätzlich
-das byteidentische Release-Bundle `dist/index.v0x0x19.js`, das diese README ohne Query-Parameter
+das byteidentische Release-Bundle `dist/index.v0x0x20.js`, das diese README ohne Query-Parameter
 lädt. Der versionsgebundene Dateiname verhindert, dass ein bereits zwischengespeichertes Bundle
 nach einem Release weiterverwendet wird; `dist/index.js` bleibt für Entwicklung und bestehende
 direkte Einbindungen erhalten.
 
 
 __Try it on LiaScript:__
-https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.19
+https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.20
 
 
 **Live-Test: manuell und außerhalb eines Hints**
@@ -70,7 +70,7 @@ Für ein manuell gesetztes Explain-Thema muss MathPath direkt im einzigen
 LiaScript-Hauptkopf des verwendenden Kurses importiert werden:
 
 ```markdown
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.19
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.20
 ```
 
 Auch das automatische Thema aus `@ADetails` funktioniert mit MathPath allein.
@@ -80,7 +80,7 @@ Template-Imports sollte man sich nicht verlassen.
 
 ```markdown
 import: https://raw.githubusercontent.com/MINT-the-GAP/lia-freeze-v2/main/README.md
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.19
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.20
 ```
 
 Nach dem MathPath-Import stehen `@ADetails`, `@Explain` und `@tooltip` zur Verfügung.
@@ -194,7 +194,7 @@ Bruchrechnung: [[  Test  ]]
 Ab MathPath **0.0.10** genügt dieser direkte Import im Kurskopf:
 
 ```markdown
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.19
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.20
 ```
 
 `@ADetails` steht mit einer Leerzeile nach dem zugehörigen Quiz. MathPath zeigt
@@ -242,7 +242,7 @@ gemeinsamen `@ADetails`-Definition voraus. Beide aktualisierten Vorlagen müssen
 veröffentlicht beziehungsweise im lokalen Test gemeinsam verwendet werden.
 
 ```markdown
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.19
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.20
 import: https://raw.githubusercontent.com/MINT-the-GAP/lia-freeze-v2/main/README.md
 ```
 
@@ -327,7 +327,7 @@ version: 1.0.0
 language: de
 mode: Presentation
 lernpfad-level: Einsteiger
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.19
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.20
 -->
 
 # Mein Lernpfad
@@ -411,7 +411,7 @@ versionierte Browser-Schnittstelle der Aufgabensammlung:
 
 - `assets/course-catalog.js` mit Schema `schullia-course-catalog`, Version 1,
 - `assets/course-generator.js` mit Schema `schullia-course-generator`,
-  Version 1 beziehungsweise Release 1.0.6,
+  Version 1 beziehungsweise Release 1.0.7,
 - `assets/course-source.js` für den gemeinsamen Markdown-Aufbau.
 
 Die `index.html` der Aufgabensammlung und `@Lernpfad` rufen dieselben
@@ -441,22 +441,36 @@ enthält vier verschiedene Aufgaben. Mit der API-Option `seed` ist sie
 reproduzierbar. Sind nur null bis drei passende Aufgaben vorhanden, wird kein
 Teilkurs geöffnet; die Meldung nennt die tatsächliche Trefferzahl.
 
-Zusätzlich begrenzt MathPath jede Auswahl auf den im Ausgangskurs belegten
-Lernkontext. Dafür werden alle Themen aus den vorhandenen `@ADetails` als
-`allowedThemes` und das vollständige Themenvokabular des Katalogs als
-`curriculumThemes` an den gemeinsamen Generator übergeben. Eine Aufgabe zu
-`Addition` darf damit beispielsweise nicht zusätzlich `Negative Zahlen`,
-`Bruchrechnung` oder `Dezimalzahlen` voraussetzen, wenn dieses Zusatzthema
-im Ausgangskurs nicht vorkam. Das gilt unverändert auch für **Vertiefungen**:
-Nur das Zielniveau steigt, nicht der belegte Lernbereich.
+Zusätzlich begrenzt MathPath jede Auswahl auf einen belegten curricularen
+Lernkontext. Alle Themen aus den vorhandenen `@ADetails` gelten zunächst als
+beobachtet. Für **Grundlagen wiederholen** sind ausschließlich diese Themen
+zulässig. **Weitere Übungen** und **Vertiefungen** dürfen zusätzlich Themen
+verwenden, die laut `Lehrplan.md` in einer **früheren** Klassenstufe bereits
+eingeführt wurden. Ein Thema aus derselben oder einer späteren Klassenstufe wird
+nicht automatisch freigegeben. Bei Vertiefungen steigt damit nur das
+Schwierigkeitsniveau, niemals die curriculare Klassenstufe.
 
-Diese Grenze ist absichtlich streng. Bleiben weniger als vier Aufgaben übrig,
-wird kein Kurs erzeugt und der Kontext niemals still gelockert. Eine exakte
-Klassenstufe lässt sich aus freien Themen-Tags allein nicht zuverlässig
-bestimmen; etwa kann dasselbe Thema je nach Schulart in verschiedenen Klassen
-beginnen. Explizite Klassen- und Schulartmetadaten sind deshalb eine mögliche
-spätere Ergänzung. Die aktuelle Regel behauptet keine erratene Klasse, verhindert
-aber bereits, dass unbekannte, höher liegende Inhalts-Tags beigemischt werden.
+Die Klassenstufe und Schulart können im Kurskopf ausdrücklich angegeben werden:
+
+``` yaml
+tags: Mathematik, Klasse 7, Gymnasium
+```
+
+MathPath erkennt diese Angaben mit der Priorität Kurskopf-Tags, Kommentar,
+Kurstitel und Kurs-URL. Widersprechen sich Angaben innerhalb der stärksten
+Quelle, bleibt der betreffende Wert unbekannt und es wird eine Warnung
+ausgegeben. Ohne Schulart wird nur die Schnittmenge der in allen plausiblen
+Schulwegen bereits früher vorkommenden Themen freigegeben. Ohne ausdrückliche
+Klasse wird aus den beobachteten Themen lediglich eine konservative Untergrenze
+abgeleitet; sie wird nicht als tatsächlich erkannte Klasse ausgegeben.
+
+Jeder Themen-Tag einer ausgewählten Katalogaufgabe muss in dieser Freigabemenge
+liegen. Unbekannte neue Co-Tags bleiben gesperrt; ein unbekanntes, aber im
+Ausgangskurs tatsächlich beobachtetes Tag bleibt zulässig. Bleiben nach dem
+Filter weniger als vier Aufgaben übrig, wird kein Kurs erzeugt und die Grenze
+niemals still gelockert. Explizite Klasse und Schulart werden im Manifest und im
+Kurskopf des erzeugten Kurses bewahrt, damit ein weiteres `@Lernpfad` denselben
+Kontext verwenden kann.
 
 ## Erzeugter Kurs und Übergabe
 
@@ -466,7 +480,8 @@ Aufgabeninhalt, `@ADetails`, `[[?]] @Explain`, Punkteformate einschließlich
 Importe werden dedupliziert. Für einen Lernpfad-Kurs wird ein vorhandener
 Freeze-Import entfernt, MathPath direkt importiert, die kanonische Angabe
 `lernpfad-level: Einsteiger|Fortgeschritten|Experte` ergänzt und eine eigene
-Abschlussfolie mit `@Lernpfad` angefügt. MathPath fügt keine Abgabe,
+Abschlussfolie mit `@Lernpfad` angefügt. Wenn bekannt, werden außerdem
+Klassenstufe und Schulart als Kurskopf-Tags übernommen. MathPath fügt keine Abgabe,
 Auswertung, Sperre oder Send-Konfiguration hinzu.
 
 Die Startfolie erhält abhängig vom Angebot einen eigenen Einführungstext für
@@ -478,9 +493,10 @@ Angebot und Thema; die Einzelbeschreibungen der vier Aufgaben werden dafür nich
 aneinandergereiht.
 
 Geöffnet wird zunächst ein Link der Form
-`https://mint-the-gap.github.io/Aufgabensammlung/course.html?v=1.0.6#course=…`.
+`https://mint-the-gap.github.io/Aufgabensammlung/course.html?v=1.0.7#course=…`.
 Der Hash enthält ausschließlich das strukturierte Manifest mit vier öffentlichen
-Aufgaben-URLs, Thema, Angebot und Niveau. Der dortige Launcher lädt diese
+Aufgaben-URLs, Thema, Angebot, Niveau und – sofern belegt – Klasse und Schulart.
+Der dortige Launcher lädt diese
 öffentlichen Quellen, baut denselben Markdown mit `mode: Presentation`, packt
 ihn als gzip-Data-URI und wechselt anschließend mit `location.replace` in den
 unveränderten offiziellen Viewer unter
@@ -558,6 +574,9 @@ einschließlich seiner aktuellen Dropdown-Auswahl. Empfehlungen enthalten
 `type`, `topic`, `targetLevel`, `taskCount: 4`, `available` und `reason`.
 `available` bedeutet, dass Thema und Zielniveau ableitbar sind; es ist noch
 keine Zusage über vier verfügbare Aufgaben in der Aufgabensammlung.
+Der Bericht enthält außerdem `context` mit `grade`, `gradeSource`,
+`schoolType`, `schoolTypeSource` und einer defensiven Kopie der
+`headerTags`. Fehlende oder widersprüchliche Angaben bleiben `null`.
 
 `generateLearningCourse({ courseUrl, recommendation }, { seed, signal })`
 prüft die Empfehlung vor und nach dem Laden erneut und erzeugt den Kurs, ohne

@@ -32,6 +32,9 @@ export function selectLearningRecommendation(
 
 /** Pure aggregation; never converts missing state into an unanswered task. */
 export function buildLearningReport(course: LearningCourse, snapshot: LearningStateSnapshot): LearningReport {
+  const sourceContext = course.context || {
+    grade: null, gradeSource: null, schoolType: null, schoolTypeSource: null, headerTags: []
+  };
   const states = new Map(snapshot.states.map(state => [state.taskId, state]));
   const protectedPhase = snapshot.phase === 'collect' || snapshot.phase === 'grading';
   const statusCounts: Record<LearningStatus, number> = { correct: 0, wrong: 0, partial: 0, unanswered: 0, unavailable: 0 };
@@ -69,7 +72,8 @@ export function buildLearningReport(course: LearningCourse, snapshot: LearningSt
   }).sort((a, b) => b.taskCount - a.taskCount || compare(a.topic, b.topic));
   const weaknessTopics = ranked.filter(topic => topic.weaknessCount > 0)
     .sort((a, b) => b.weaknessCount - a.weaknessCount || b.taskCount - a.taskCount || compare(a.topic, b.topic));
-  return { courseUrl: course.url, phase: snapshot.phase, topics: ranked, weaknessTopics,
+  return { courseUrl: course.url, context: { ...sourceContext, headerTags: [...sourceContext.headerTags] },
+    phase: snapshot.phase, topics: ranked, weaknessTopics,
     statusCounts, warnings: [...new Set([...course.warnings, ...snapshot.warnings])],
     recommendations: [selectLearningRecommendation('weakness', weaknessTopics[0], snapshot.phase),
       selectLearningRecommendation('practice', ranked[0], snapshot.phase),

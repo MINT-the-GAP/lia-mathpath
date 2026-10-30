@@ -14,7 +14,37 @@ export interface SharedCatalogTask {
 export interface SharedCourseCatalog {
   schema: 'schullia-course-catalog';
   version: 1;
+  curriculum?: SharedCurriculumCatalog;
   tasks: SharedCatalogTask[];
+}
+
+export interface SharedCurriculumCatalog {
+  schema: 'schullia-sachsen-curriculum';
+  version: 1;
+  jurisdiction: string;
+  source: string;
+  themes: Record<string, Record<string, Record<string, string[]>>>;
+  classRanges: Record<string, Record<string, { startGrade: number; endGrade: number }>>;
+}
+
+export type SharedSchoolType = 'oberschule' | 'gymnasium' | 'bgy';
+
+export interface SharedCurriculumContextOptions {
+  observedThemes: string[];
+  grade?: number | null;
+  schoolType?: SharedSchoolType | null;
+}
+
+export interface SharedCurriculumContext {
+  observedThemes: string[];
+  priorThemes: string[];
+  allowedThemes: string[];
+  curriculumThemes: string[];
+  grade: number | null;
+  gradeSource: 'explicit' | 'themes' | 'unavailable';
+  schoolType: SharedSchoolType | null;
+  unmappedObservedThemes: string[];
+  gradeConflicts: string[];
 }
 
 export interface SharedGeneratorTask extends SharedCatalogTask {}
@@ -50,6 +80,8 @@ export interface SharedLearningPathManifest {
   offer: 'schwaechen-ueben' | 'weitere-uebungen' | 'vertiefungen';
   topic: string;
   level: 'einsteiger' | 'fortgeschrittene' | 'experten';
+  grade?: number;
+  schoolType?: SharedSchoolType;
   urls: string[];
 }
 
@@ -63,6 +95,10 @@ export interface SharedCourseGenerator {
   release: string;
   profiles: Record<string, unknown>;
   validateCatalog(catalog: unknown): SharedCourseCatalog;
+  deriveCurriculumContext(
+    catalog: SharedCourseCatalog,
+    options: SharedCurriculumContextOptions
+  ): SharedCurriculumContext;
   generate(
     catalog: SharedCourseCatalog,
     request: SharedGeneratorRequest,
@@ -87,7 +123,7 @@ type RuntimeWindow = Window & typeof globalThis & {
 };
 
 export const SHARED_COURSE_BASE_URL = 'https://mint-the-gap.github.io/Aufgabensammlung/';
-export const SHARED_COURSE_RELEASE = '1.0.6';
+export const SHARED_COURSE_RELEASE = '1.0.7';
 const LOAD_TIMEOUT_MS = 20_000;
 const loads = new WeakMap<Document, Promise<SharedCourseRuntime>>();
 
@@ -101,6 +137,23 @@ function runtimeWindow(doc: Document): RuntimeWindow {
   const win = doc.defaultView;
   if (!win) throw new Error('Der gemeinsame Kursgenerator benötigt ein Browserfenster.');
   return win as RuntimeWindow;
+}
+
+function compatibleGenerator(value: unknown): boolean {
+  const generator = value as Partial<SharedCourseGenerator> | undefined;
+  return Boolean(generator && generator.schema === 'schullia-course-generator' &&
+    generator.version === 1 && generator.release === SHARED_COURSE_RELEASE &&
+    typeof generator.validateCatalog === 'function' &&
+    typeof generator.deriveCurriculumContext === 'function' &&
+    typeof generator.generate === 'function');
+}
+
+function compatibleCatalog(value: unknown): boolean {
+  const catalog = value as Partial<SharedCourseCatalog> | undefined;
+  return Boolean(catalog && catalog.schema === 'schullia-course-catalog' &&
+    catalog.version === 1 && Array.isArray(catalog.tasks) &&
+    catalog.curriculum?.schema === 'schullia-sachsen-curriculum' &&
+    catalog.curriculum.version === 1);
 }
 
 function loadClassicScript(
@@ -148,14 +201,14 @@ function validateRuntime(win: RuntimeWindow): Omit<SharedCourseRuntime, 'baseUrl
   if (!assembler || typeof assembler.build !== 'function') {
     throw new Error('Der gemeinsame Kurs-Assembler ist nicht verfügbar.');
   }
-  if (!generator || generator.schema !== 'schullia-course-generator' || generator.version !== 1 ||
-      generator.release !== SHARED_COURSE_RELEASE ||
+  if (!generator || !compatibleGenerator(generator) ||
       typeof generator.validateCatalog !== 'function' || typeof generator.generate !== 'function' ||
+      typeof generator.deriveCurriculumContext !== 'function' ||
       typeof generator.learningPathSourceOptions !== 'function' ||
       typeof generator.buildDirectCourseUrl !== 'function') {
     throw new Error('Die Version des gemeinsamen Kursgenerators wird von MathPath nicht unterstützt.');
   }
-  if (!catalog || catalog.schema !== 'schullia-course-catalog' || catalog.version !== 1) {
+  if (!catalog || !compatibleCatalog(catalog)) {
     throw new Error('Die Version des Aufgabenkatalogs wird von MathPath nicht unterstützt.');
   }
   const checked = generator.validateCatalog(catalog);
@@ -179,9 +232,9 @@ export function loadSharedCourseRuntime(
     await loadClassicScript(doc, releasedAssetUrl(normalizedBase, 'assets/course-source.js'),
       () => win.SchulLiaCourseSource !== undefined);
     await loadClassicScript(doc, releasedAssetUrl(normalizedBase, 'assets/course-generator.js'),
-      () => win.SchulLiaCourseGenerator !== undefined);
+      () => compatibleGenerator(win.SchulLiaCourseGenerator));
     await loadClassicScript(doc, releasedAssetUrl(normalizedBase, 'assets/course-catalog.js'),
-      () => win.SchulLiaCourseCatalog !== undefined);
+      () => compatibleCatalog(win.SchulLiaCourseCatalog));
     return { ...validateRuntime(win), baseUrl: normalizedBase };
   })();
   loads.set(doc, promise);

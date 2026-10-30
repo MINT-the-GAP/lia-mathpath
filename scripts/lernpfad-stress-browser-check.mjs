@@ -344,20 +344,20 @@ async function stressPublicApi(page, host, perOffer) {
     assert.doesNotMatch(course.markdown,
       /lia-freeze|FreezeREADME|@Abgabe|@Auswertung/i)
     assert.equal(count(course.markdown,
-      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.19$/gm), 1)
+      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.20$/gm), 1)
     assert.deepEqual(
       course.markdown.match(/^comment:.*$/gm),
       ['comment: ' + expected.comment]
     )
     assert.equal(count(course.markdown, /^@Lernpfad$/gm), 1)
     assert.match(course.openingTarget,
-      /^https:\/\/mint-the-gap\.github\.io\/Aufgabensammlung\/course\.html\?v=1\.0\.6#course=/)
+      /^https:\/\/mint-the-gap\.github\.io\/Aufgabensammlung\/course\.html\?v=1\.0\.7#course=/)
   }
 
   const sharedScripts = await page.evaluate(prefix =>
     [...document.scripts].map(script => script.src)
       .filter(src => src.startsWith(prefix) &&
-        /\/assets\/course-(?:source|generator|catalog)\.js\?v=1\.0\.6$/.test(src)),
+        /\/assets\/course-(?:source|generator|catalog)\.js\?v=1\.0\.7$/.test(src)),
   pagesBase)
   assert.equal(sharedScripts.length, 3)
   assert.equal(new Set(sharedScripts).size, 3)
@@ -382,7 +382,7 @@ async function inspectOpenedCourse(popup) {
   assert.doesNotMatch(source.body,
     /lia-freeze|FreezeREADME|@Abgabe|@Auswertung/i)
   assert.equal(count(source.body,
-    /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.19$/gm), 1)
+    /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.20$/gm), 1)
   assert.equal(count(source.body, /^@Lernpfad$/gm), 1)
   assert.equal(count(source.body, /^# STRESS_TASK_\d+$/gm), 4)
   assert.equal(count(source.body, /^mode:\s*Presentation$/gm), 1)
@@ -420,7 +420,7 @@ async function openOffer(context, page, host, type, inspectCourse) {
   assert.equal(manifest.level, expected.manifestLevel)
   assert.equal(manifest.urls.length, 4)
   assert.equal(new Set(manifest.urls).size, 4)
-  assert.equal(openingUrl.search, '?v=1.0.6')
+  assert.equal(openingUrl.search, '?v=1.0.7')
 
   await page.waitForTimeout(150)
   const calls = await page.evaluate(() =>

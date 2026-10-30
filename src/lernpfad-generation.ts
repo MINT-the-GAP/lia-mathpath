@@ -13,6 +13,7 @@ import type {
   SharedLearningPathManifest
 } from './lernpfad-shared';
 import type {
+  LearningCourseContext,
   LearningLevel,
   LearningOfferType,
   LearningRecommendation,
@@ -25,6 +26,7 @@ type SharedLearningOffer = SharedLearningPathManifest['offer'];
 type RevalidatedRecommendation = {
   recommendation: LearningRecommendation & { topic: string; targetLevel: LearningLevel };
   contextThemes: string[];
+  courseContext: LearningCourseContext;
 };
 
 const LEVEL_GROUPS: Record<LearningLevel, SharedLearningGroup> = {
@@ -133,14 +135,23 @@ function reportContextThemes(report: LearningReport): string[] {
   return uniqueThemes(report.topics.map(topic => topic.topic));
 }
 
-function catalogTopicUniverse(runtime: Awaited<ReturnType<LearningGenerationDependencies['loadRuntime']>>): string[] {
-  const topics: string[] = [];
-  for (const task of runtime.catalog.tasks) topics.push(...task.topics);
-  return uniqueThemes(topics);
+function reportCourseContext(report: LearningReport): LearningCourseContext {
+  const context = report.context;
+  return {
+    grade: Number.isInteger(context?.grade) ? context.grade : null,
+    gradeSource: context?.gradeSource ?? null,
+    schoolType: context?.schoolType ?? null,
+    schoolTypeSource: context?.schoolTypeSource ?? null,
+    headerTags: Array.isArray(context?.headerTags) ? [...context.headerTags] : []
+  };
 }
 
 function sameThemeContext(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value, index) => normalizeTopic(value) === normalizeTopic(right[index]));
+}
+
+function sameCourseContext(left: LearningCourseContext, right: LearningCourseContext): boolean {
+  return left.grade === right.grade && left.schoolType === right.schoolType;
 }
 
 async function revalidate(
@@ -189,7 +200,8 @@ async function revalidate(
   }
   return {
     recommendation: current as LearningRecommendation & { topic: string; targetLevel: LearningLevel },
-    contextThemes: reportContextThemes(report)
+    contextThemes: reportContextThemes(report),
+    courseContext: reportCourseContext(report)
   };
 }
 
@@ -241,9 +253,15 @@ function learningPathManifest(
   type: LearningOfferType,
   topic: string,
   group: SharedLearningGroup,
+  context: LearningCourseContext,
   urls: string[]
 ): SharedLearningPathManifest {
-  return { v: 1, kind: 'lernpfad', offer: OFFER_NAMES[type], topic, level: group, urls: [...urls] };
+  const manifest: SharedLearningPathManifest = {
+    v: 1, kind: 'lernpfad', offer: OFFER_NAMES[type], topic, level: group, urls: [...urls]
+  };
+  if (context.grade !== null) manifest.grade = context.grade;
+  if (context.schoolType !== null) manifest.schoolType = context.schoolType;
+  return manifest;
 }
 
 /**
@@ -269,14 +287,30 @@ export function createLearningCourseGenerator(dependencies: LearningGenerationDe
       const runtime = await dependencies.loadRuntime();
       runtimeLoaded = true;
       checkAbort(options.signal);
+      const curriculumContext = runtime.generator.deriveCurriculumContext(runtime.catalog, {
+        observedThemes: validated.contextThemes,
+        grade: validated.courseContext.grade,
+        schoolType: validated.courseContext.schoolType
+      });
+      if (!Array.isArray(curriculumContext.allowedThemes) ||
+          !Array.isArray(curriculumContext.curriculumThemes) ||
+          curriculumContext.allowedThemes.some(theme => typeof theme !== 'string') ||
+          curriculumContext.curriculumThemes.some(theme => typeof theme !== 'string')) {
+        fail('CATALOG_INVALID', 'Der gemeinsame Lehrplankontext besitzt ein unbekanntes Format.');
+      }
+      const allowedThemes = current.type === 'weakness'
+        ? validated.contextThemes
+        : uniqueThemes(curriculumContext.allowedThemes);
       const generatorRequest = sharedRequest(
         recommendation.topic,
         group,
-        validated.contextThemes,
-        catalogTopicUniverse(runtime),
+        allowedThemes,
+        uniqueThemes(curriculumContext.curriculumThemes),
         options.seed
       );
-      const sourceManifest = learningPathManifest(current.type, recommendation.topic, group, []);
+      const sourceManifest = learningPathManifest(
+        current.type, recommendation.topic, group, validated.courseContext, []
+      );
       const generatorOptions: Record<string, unknown> = {
         assembler: runtime.assembler,
         signal: options.signal,
@@ -286,7 +320,9 @@ export function createLearningCourseGenerator(dependencies: LearningGenerationDe
       output = await runtime.generator.generate(runtime.catalog, copy(generatorRequest), generatorOptions);
       validateGenerated(output, recommendation);
       const urls = output.tasks.map(task => task.url);
-      const manifest = learningPathManifest(current.type, recommendation.topic, group, urls);
+      const manifest = learningPathManifest(
+        current.type, recommendation.topic, group, validated.courseContext, urls
+      );
       openingTarget = runtime.generator.buildDirectCourseUrl(
         new URL('index.html', runtime.baseUrl).href,
         manifest
@@ -311,6 +347,8 @@ export function createLearningCourseGenerator(dependencies: LearningGenerationDe
         CATALOG_UNAVAILABLE: 'CATALOG_UNAVAILABLE',
         INVALID_CATALOG: 'CATALOG_INVALID',
         CATALOG_INVALID: 'CATALOG_INVALID',
+        INVALID_CURRICULUM: 'CATALOG_INVALID',
+        CURRICULUM_MISSING: 'CATALOG_INVALID',
         NO_TASKS: 'TOPIC_NOT_FOUND',
         INSUFFICIENT_TASKS: 'INSUFFICIENT_TASKS',
         FETCH_FAILED: 'TASK_SOURCE_UNAVAILABLE',
@@ -358,7 +396,8 @@ export function createLearningCourseGenerator(dependencies: LearningGenerationDe
     checkAbort(options.signal);
 
     const refreshed = await revalidate(dependencies, courseUrl, recommendation, options.signal);
-    if (!sameThemeContext(validated.contextThemes, refreshed.contextThemes)) {
+    if (!sameThemeContext(validated.contextThemes, refreshed.contextThemes) ||
+        !sameCourseContext(validated.courseContext, refreshed.courseContext)) {
       fail('STALE_RECOMMENDATION', 'Der belegte Lernkontext hat sich geändert. Bitte Empfehlungen neu erstellen.', {
         topic: recommendation.topic,
         targetLevel: recommendation.targetLevel ?? undefined

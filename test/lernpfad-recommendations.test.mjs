@@ -82,3 +82,18 @@ test('normalizes topic identity and handles a course without usable tags', () =>
   assert.equal(buildLearningReport(course([]), snapshot()).recommendations.length, 3)
   assert.ok(buildLearningReport(course([]), snapshot()).recommendations.every(r => !r.available))
 })
+
+test('carries a detached explicit course context into the learning report', () => {
+  const c = course([task('a', ['Addition'])])
+  c.context = {
+    grade: 5, gradeSource: 'header-tags', schoolType: 'gymnasium',
+    schoolTypeSource: 'comment', headerTags: ['Klasse 5', 'Gymnasium']
+  }
+  const report = buildLearningReport(c, snapshot())
+  assert.deepEqual(report.context, c.context)
+  assert.notEqual(report.context, c.context)
+  assert.notEqual(report.context.headerTags, c.context.headerTags)
+  report.context.headerTags.push('Spaeter')
+  assert.deepEqual(c.context.headerTags, ['Klasse 5', 'Gymnasium'])
+  assert.deepEqual(report.topics.map(topic => topic.topic), ['Addition'])
+})

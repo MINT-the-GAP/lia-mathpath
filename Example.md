@@ -3,12 +3,12 @@ author: Martin Lommatzsch
 version: 0.1.0
 language: de
 comment: Beispielkurs für adaptive Übungsempfehlungen und direkt erzeugte Lernpfad-Kurse mit MathPath.
-tags: Mathematik, Grundrechenarten, Bruchrechnung, Prozentrechnung, Lernpfad
+tags: Mathematik, Klasse 7, Gymnasium, Grundrechenarten, Bruchrechnung, Prozentrechnung, Lernpfad
 mode: Presentation
 lernpfad-level: Einsteiger
 
 import: https://raw.githubusercontent.com/MINT-the-GAP/lia-freeze-v2/main/README.md
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.19
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.20
 import: https://raw.githubusercontent.com/MINT-the-GAP/lia-resetter/main/README.md
 -->
 

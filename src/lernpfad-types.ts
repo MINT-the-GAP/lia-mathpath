@@ -1,6 +1,17 @@
 /** Data shared by the read-only course/state adapters and recommendation UI. */
 export type LearningLevel = 'Einsteiger' | 'Fortgeschritten' | 'Experte';
 export type LearningStatus = 'correct' | 'wrong' | 'partial' | 'unanswered' | 'unavailable';
+export type LearningSchoolType = 'oberschule' | 'gymnasium' | 'bgy';
+export type LearningContextSource = 'header-tags' | 'comment' | 'title' | 'url';
+
+/** Source-evidenced course context; missing or conflicting evidence stays null. */
+export interface LearningCourseContext {
+  grade: number | null;
+  gradeSource: LearningContextSource | null;
+  schoolType: LearningSchoolType | null;
+  schoolTypeSource: LearningContextSource | null;
+  headerTags: string[];
+}
 
 export interface LearningTask {
   id: string;
@@ -19,6 +30,7 @@ export interface LearningTask {
 export interface LearningCourse {
   url: string;
   version: string | null;
+  context: LearningCourseContext;
   tasks: LearningTask[];
   warnings: string[];
   sendMode: boolean;
@@ -61,6 +73,7 @@ export interface LearningRecommendation {
 
 export interface LearningReport {
   courseUrl: string;
+  context: LearningCourseContext;
   phase: LearningStateSnapshot['phase'];
   topics: LearningTopic[];
   weaknessTopics: LearningTopic[];
