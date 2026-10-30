@@ -10,6 +10,8 @@ import {
   setDiscoveryFunction
 } from './ui';
 import { registerGlobalApi, setHighlightFunction, attemptGlossaryDiscovery } from './api';
+import { installAssignmentDetails } from './adetails';
+import { registerLearningPathElement } from './lernpfad-ui';
 
 const DIST_INDEX_SCRIPT_RE = /\/dist\/index(?:\.[a-z0-9]+)?\.js$/i;
 
@@ -95,6 +97,8 @@ if (!IS_DUPLICATE) {
   ensureCss();
   syncAccentColor();
   registerExplainElement();
+  installAssignmentDetails();
+  registerLearningPathElement();
   setHighlightFunction(highlightGlossaryTerms);
   setDiscoveryFunction(attemptGlossaryDiscovery);
   bindGlossaryInteractions(document);

@@ -86,6 +86,28 @@ function normalizeHttpUrl(url: string): string | null {
   }
 }
 
+const GENERATED_COURSE_URI_RE = /^parent:schullia-[a-z0-9][a-z0-9-]{7,159}$/i;
+
+/**
+ * Sources created by the Aufgabensammlung player use a deterministic parent:
+ * URI. The player exposes only that exact source through its same-origin
+ * frame bridge, so accepting this narrowly scoped URI does not grant access to
+ * arbitrary custom protocols.
+ */
+export function normalizeCourseSourceUri(value: string): string | null {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const withoutSubmission = raw.split('#', 1)[0];
+  if (GENERATED_COURSE_URI_RE.test(withoutSubmission)) return withoutSubmission;
+  const http = normalizeHttpUrl(withoutSubmission);
+  if (!http) return null;
+  try {
+    return /\.md$/i.test(new URL(http).pathname) ? http : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 export function setPluginBaseUrl(url: string): void {
   const normalized = normalizeHttpUrl(url);
   if (!normalized) return;
@@ -123,6 +145,17 @@ export function getCourseMarkdownUrl(): string | null {
 
   for (let i = 0; i < hrefCandidates.length; i++) {
     const href = hrefCandidates[i];
+    // Freeze encodes the complete inner course URL, including its submission
+    // fragment. Decode that wrapper, preserving escapes in an ordinary URL.
+    try {
+      const query = new URL(href).search.slice(1);
+      const candidates = [query];
+      try { candidates.push(decodeURIComponent(query)); } catch (_) { /* malformed URL */ }
+      for (const candidate of candidates) {
+        const normalized = normalizeCourseSourceUri(candidate);
+        if (normalized) return normalized;
+      }
+    } catch (_) { /* retain the legacy embedded-query fallback */ }
     const match = href.match(/[?&](https?:\/\/[^?#]+\.md(?:\?[^#&]*)?)/i);
     if (match?.[1]) return match[1];
   }

@@ -11,6 +11,9 @@ import {
   setGlossaryEntries
 } from './store';
 import type { GlossaryEntry } from './types';
+import { getLearningRecommendations, getLastLearningRecommendations } from './lernpfad-service';
+import { generateLearningCourse } from './lernpfad-generate-course';
+import { openGeneratedLearningCourse, openLearningCourse } from './lernpfad-open-course';
 import { automaticTooltipsEnabled, setAutomaticTooltips } from './ui';
 
 export function autoDiscoverGlossary(): number {
@@ -138,6 +141,11 @@ function buildLearningToken(studentId: string | undefined): string {
 
 export function registerGlobalApi(): void {
   window.__LIA_MATHPATH__ = {
+    getLearningRecommendations,
+    getLastLearningRecommendations,
+    generateLearningCourse,
+    openGeneratedLearningCourse,
+    openLearningCourse,
     setGlossary(entries: GlossaryEntry[]): number {
       const count = setGlossaryEntries(entries || []);
       doTriggerHighlighting();

@@ -1,4 +1,10 @@
 // Shared interfaces and global declarations for lia-mathpath.
+import type { LearningReport } from './lernpfad-types';
+import type {
+  GeneratedLearningCourse,
+  LearningCourseGenerationOptions,
+  LearningCourseGenerationRequest
+} from './lernpfad-generation-types';
 
 export interface GlossaryEntry {
   term: string;
@@ -23,6 +29,19 @@ export interface MathPathStore {
 declare global {
   interface Window {
     __LIA_MATHPATH__: {
+      getLearningRecommendations: () => Promise<LearningReport>;
+      getLastLearningRecommendations: () => LearningReport | null;
+      generateLearningCourse: (
+        request: LearningCourseGenerationRequest,
+        options?: LearningCourseGenerationOptions
+      ) => Promise<GeneratedLearningCourse>;
+      openGeneratedLearningCourse: (
+        result: GeneratedLearningCourse
+      ) => Promise<GeneratedLearningCourse>;
+      openLearningCourse: (
+        request: LearningCourseGenerationRequest,
+        options?: LearningCourseGenerationOptions
+      ) => Promise<GeneratedLearningCourse>;
       setGlossary: (entries: GlossaryEntry[]) => number;
       loadGlossaryMarkdown: (markdown: string) => number;
       getGlossary: (term: string) => GlossaryEntry | null;

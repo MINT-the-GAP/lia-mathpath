@@ -2,6 +2,7 @@
 // Also provides automatic glossary term highlighting in page text.
 
 import katex from 'katex';
+import { findAssignmentDetailsForQuiz, parseAssignmentDetails, readAssignmentDetails } from './adetails';
 import { isElmManagedNode } from './dom-ownership';
 import {
   getCourseBaseUrl,
@@ -163,17 +164,7 @@ function parseExplainMarkdown(markdown: string): Record<string, string> {
 
 /** Parses the "points-marker; topic1, topic2" format shared by @ADetails(...) call args and their rendered data-adetails* attributes. */
 function extractTopicsAfterFirstSemicolon(value: string): string[] {
-  const content = decodeTopicSeparators(value).trim();
-  if (!content) return [];
-
-  const sepIndex = content.indexOf(';');
-  if (sepIndex < 0) return [];
-  const topicPart = content.slice(sepIndex + 1);
-
-  return topicPart
-    .split(/[;,]+/g)
-    .map(v => v.trim())
-    .filter(v => Boolean(v) && !/=\s*BE/i.test(v) && !/^\d+(?:\.\d+)?$/.test(v));
+  return parseAssignmentDetails(decodeTopicSeparators(value).replace(/^`([\s\S]*)`$/, '$1')).tags;
 }
 
 function parseADetailsTopicsByIndex(markdown: string): Record<number, string[]> {
@@ -190,7 +181,9 @@ function parseADetailsTopicsByIndex(markdown: string): Record<number, string[]> 
         return '';
       }
       if (fenceMarker) return '';
-      return line.replace(/`[^`]*`/g, '');
+      // Backticks around the complete ADetails argument are authored syntax,
+      // not an inline-code example to remove.
+      return /^\s*@ADetails\s*\(/.test(line) ? line : '';
     })
     .join('\n');
   const regex = /@ADetails\(([^)]*)\)/g;
@@ -297,7 +290,7 @@ function findRelatedADetails(element: Element): Element | null {
     if (inQuiz) return inQuiz;
   }
 
-  return findClosestADetails(element);
+  return quiz ? findAssignmentDetailsForQuiz(quiz) : findClosestADetails(element);
 }
 
 function extractTopicsFromDetailElement(details: Element): string[] {
@@ -314,12 +307,7 @@ function extractTopicsFromDetailElement(details: Element): string[] {
     }
   }
 
-  const adetails =
-    details.getAttribute('data-adetails-all') ||
-    details.getAttribute('data-adetails') ||
-    details.getAttribute('data-adetails-raw') ||
-    '';
-  elementTopics.push(...extractTopicsAfterFirstSemicolon(adetails));
+  elementTopics.push(...readAssignmentDetails(details).tags);
 
   let fallbackTopics: string[] = [];
 
