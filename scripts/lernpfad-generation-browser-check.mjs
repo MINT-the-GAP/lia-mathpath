@@ -52,8 +52,8 @@ function originalCourseSource() {
   const tasks = [
     ['Bruchrechnung A', 'bruch-a', 'Bruchrechnung'],
     ['Bruchrechnung B', 'bruch-b', 'Bruchrechnung'],
-    ['Grundrechenarten A', 'grund-a', 'Grundrechenarten'],
-    ['Grundrechenarten B', 'grund-b', 'Grundrechenarten']
+    ['Grundrechenarten A', 'grund-a', 'Grundrechenarten, Addition'],
+    ['Grundrechenarten B', 'grund-b', 'Grundrechenarten, Addition']
   ]
   return [
     '<!--', 'author: Browser Regression', 'version: 1.0.0', 'language: de',
@@ -71,7 +71,9 @@ function originalCourseSource() {
 function generatedTaskSource(index) {
   const header = [
     '<!--', 'author: Browser Task ' + index, 'version: 1.0.0',
-    'language: de', 'mode: Presentation', 'import: ' + mathPathUrl
+    'language: de', 'mode: Presentation',
+    'comment: Technische Browser-Aufgabe ' + index,
+    'import: ' + mathPathUrl
   ]
   if (index === 1) {
     header.push('@canvas: <span data-browser-canvas-stub="1"></span>')
@@ -333,7 +335,24 @@ async function run() {
     )
     assert.equal(manifest.urls.length, 4)
     assert.equal(new Set(manifest.urls).size, 4)
-    assert.equal(openingUrl.search, '?v=1.0.5')
+    const sharedCatalog = JSON.parse(await readFile(
+      path.join(sharedRoot, 'assets', 'course-catalog.json'),
+      'utf8'
+    ))
+    const catalogByUrl = new Map(sharedCatalog.tasks.map(task => [task.url, task]))
+    const evidencedTopics = new Set(initialReport.topics.map(item =>
+      item.topic.trim().replace(/\s+/g, ' ').normalize('NFC').toLocaleLowerCase('de-DE')
+    ))
+    const selectedCatalogTasks = manifest.urls.map(url => catalogByUrl.get(url))
+    assert.ok(selectedCatalogTasks.every(Boolean))
+    assert.ok(selectedCatalogTasks.every(task => task.topics.every(topic =>
+      evidencedTopics.has(topic.trim().replace(/\s+/g, ' ').normalize('NFC').toLocaleLowerCase('de-DE'))
+    )))
+    check('Generated URLs stay inside evidenced ADetails context', {
+      evidencedTopics: [...evidencedTopics],
+      selected: selectedCatalogTasks.map(task => ({ id: task.id, topics: task.topics }))
+    })
+    assert.equal(openingUrl.search, '?v=1.0.6')
     const openCalls = await page.evaluate(() => window.__MATHPATH_OPEN_CALLS__)
     assert.equal(openCalls.length, 1)
     assert.deepEqual(openCalls[0], {
@@ -381,7 +400,12 @@ async function run() {
     const intro = source.body.slice(0, source.body.indexOf('# BROWSER_TASK_'))
     assert.equal(count(intro, /^---$/gm), 8)
     assert.equal(count(source.body,
-      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.18$/gm), 1)
+      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.19$/gm), 1)
+    assert.deepEqual(
+      source.body.match(/^comment:.*$/gm),
+      ['comment: Übe das Thema „Grundrechenarten“ auf deinem bisherigen Niveau weiter und gewinne mehr Sicherheit.']
+    )
+    assert.doesNotMatch(source.body, /Technische Browser-Aufgabe/)
     assert.doesNotMatch(source.body, /lia-freeze|FreezeREADME|@Abgabe|@Auswertung/i)
     assert.equal(count(source.body, /^mode:\s*Presentation$/gm), 1)
     assert.doesNotMatch(source.body, /^mode:\s*Textbook$/m)
@@ -436,6 +460,7 @@ async function run() {
     })
 
     await popup.reload({ waitUntil: 'domcontentloaded', timeout })
+    await expect(frame.locator(hostSelector).first()).toBeVisible()
     const restoredSlide = await findLearningPathSlide(frame)
     const restoredReport = await recommend(frame.locator(hostSelector))
     assert.equal(restoredReport.courseUrl, source.uri)

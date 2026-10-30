@@ -22,6 +22,10 @@ import type {
 
 type SharedLearningGroup = SharedGeneratorRequest['group'];
 type SharedLearningOffer = SharedLearningPathManifest['offer'];
+type RevalidatedRecommendation = {
+  recommendation: LearningRecommendation & { topic: string; targetLevel: LearningLevel };
+  contextThemes: string[];
+};
 
 const LEVEL_GROUPS: Record<LearningLevel, SharedLearningGroup> = {
   Einsteiger: 'einsteiger',
@@ -113,12 +117,38 @@ function topicFor(
   return topics.find(topic => normalizeTopic(topic.topic) === wanted);
 }
 
+function uniqueThemes(values: Iterable<string>): string[] {
+  const themes = new Map<string, string>();
+  for (const value of values) {
+    const display = String(value || '').trim().replace(/\s+/g, ' ').normalize('NFC');
+    const normalized = normalizeTopic(display);
+    if (normalized && !themes.has(normalized)) themes.set(normalized, display);
+  }
+  return [...themes.entries()]
+    .sort(([left], [right]) => left.localeCompare(right, 'de'))
+    .map(([, display]) => display);
+}
+
+function reportContextThemes(report: LearningReport): string[] {
+  return uniqueThemes(report.topics.map(topic => topic.topic));
+}
+
+function catalogTopicUniverse(runtime: Awaited<ReturnType<LearningGenerationDependencies['loadRuntime']>>): string[] {
+  const topics: string[] = [];
+  for (const task of runtime.catalog.tasks) topics.push(...task.topics);
+  return uniqueThemes(topics);
+}
+
+function sameThemeContext(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => normalizeTopic(value) === normalizeTopic(right[index]));
+}
+
 async function revalidate(
   dependencies: LearningGenerationDependencies,
   courseUrl: string,
   requested: LearningRecommendation & { topic: string },
   signal?: AbortSignal
-): Promise<LearningRecommendation & { topic: string; targetLevel: LearningLevel }> {
+): Promise<RevalidatedRecommendation> {
   checkAbort(signal);
   if (dependencies.getCurrentCourseUrl() !== courseUrl) {
     fail('COURSE_CHANGED', 'Der Ausgangskurs wurde inzwischen gewechselt. Bitte Empfehlungen neu erstellen.');
@@ -157,17 +187,24 @@ async function revalidate(
       targetLevel: requested.targetLevel ?? undefined
     });
   }
-  return current as LearningRecommendation & { topic: string; targetLevel: LearningLevel };
+  return {
+    recommendation: current as LearningRecommendation & { topic: string; targetLevel: LearningLevel },
+    contextThemes: reportContextThemes(report)
+  };
 }
 
 function sharedRequest(
   topic: string,
   group: SharedLearningGroup,
+  allowedThemes: string[],
+  curriculumThemes: string[],
   seed?: string | number
 ): SharedGeneratorRequest {
   const request: SharedGeneratorRequest = {
     themes: [topic],
     blockedThemes: [],
+    allowedThemes: [...allowedThemes],
+    curriculumThemes: [...curriculumThemes],
     count: 4,
     group,
     strictCount: true
@@ -221,9 +258,9 @@ export function createLearningCourseGenerator(dependencies: LearningGenerationDe
   return async (input, options = {}) => {
     const { courseUrl, recommendation } = validateRequest(input);
     checkAbort(options.signal);
-    const current = await revalidate(dependencies, courseUrl, recommendation, options.signal);
+    const validated = await revalidate(dependencies, courseUrl, recommendation, options.signal);
+    const current = validated.recommendation;
     const group = LEVEL_GROUPS[current.targetLevel];
-    const generatorRequest = sharedRequest(recommendation.topic, group, options.seed);
     let output: SharedGeneration;
     let openingTarget = '';
     let catalogVersion: number | string = '';
@@ -232,6 +269,13 @@ export function createLearningCourseGenerator(dependencies: LearningGenerationDe
       const runtime = await dependencies.loadRuntime();
       runtimeLoaded = true;
       checkAbort(options.signal);
+      const generatorRequest = sharedRequest(
+        recommendation.topic,
+        group,
+        validated.contextThemes,
+        catalogTopicUniverse(runtime),
+        options.seed
+      );
       const sourceManifest = learningPathManifest(current.type, recommendation.topic, group, []);
       const generatorOptions: Record<string, unknown> = {
         assembler: runtime.assembler,
@@ -313,7 +357,13 @@ export function createLearningCourseGenerator(dependencies: LearningGenerationDe
     }
     checkAbort(options.signal);
 
-    await revalidate(dependencies, courseUrl, recommendation, options.signal);
+    const refreshed = await revalidate(dependencies, courseUrl, recommendation, options.signal);
+    if (!sameThemeContext(validated.contextThemes, refreshed.contextThemes)) {
+      fail('STALE_RECOMMENDATION', 'Der belegte Lernkontext hat sich geändert. Bitte Empfehlungen neu erstellen.', {
+        topic: recommendation.topic,
+        targetLevel: recommendation.targetLevel ?? undefined
+      });
+    }
     const result: GeneratedLearningCourse = {
       sourceCourseUrl: courseUrl,
       type: current.type,

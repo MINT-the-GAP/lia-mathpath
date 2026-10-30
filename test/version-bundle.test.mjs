@@ -19,10 +19,10 @@ const auxiliaryTemplates = await Promise.all([
 const filename = bundleFilenameForVersion(manifest.version)
 
 test('release bundle slug is deterministic and rejects ambiguous versions', () => {
-  assert.equal(bundleSlugForVersion('0.0.18'), 'v0x0x18')
+  assert.equal(bundleSlugForVersion('0.0.19'), 'v0x0x19')
   assert.equal(bundleFilenameForVersion('12.3.45'), 'index.v12x3x45.js')
-  assert.throws(() => bundleSlugForVersion('0.0.18-beta.1'), /exact numeric semver/)
-  assert.throws(() => bundleSlugForVersion('v0.0.18'), /exact numeric semver/)
+  assert.throws(() => bundleSlugForVersion('0.0.19-beta.1'), /exact numeric semver/)
+  assert.throws(() => bundleSlugForVersion('v0.0.19'), /exact numeric semver/)
 })
 
 test('README version and query-free script path match the package release', () => {

@@ -64,6 +64,17 @@ const sharedOutput = (markdown = '<!--\nlernpfad-level: Einsteiger\n-->\n# Kurs'
   source: markdown
 })
 
+const catalogTask = (id, topics) => ({
+  id,
+  url: 'https://example.test/' + id + '.md',
+  title: id,
+  tags: topics,
+  topics,
+  difficulty: 1,
+  network: 1,
+  operator: 'berechnen'
+})
+
 function harness(initialReport = report(), generateImpl = async () => sharedOutput()) {
   let currentUrl = courseUrl
   let currentReport = initialReport
@@ -73,7 +84,10 @@ function harness(initialReport = report(), generateImpl = async () => sharedOutp
   const directManifests = []
   const runtime = {
     baseUrl: 'https://mint-the-gap.github.io/Aufgabensammlung/',
-    catalog: { schema: 'schullia-course-catalog', version: 1, tasks: [] },
+    catalog: {
+      schema: 'schullia-course-catalog', version: 1,
+      tasks: [catalogTask('basic', ['Algebra']), catalogTask('advanced', ['Algebra', 'Negative Zahlen'])]
+    },
     assembler: { build: () => '' },
     generator: {
       async generate(_catalog, request, options) {
@@ -126,7 +140,9 @@ test('maps all three offers to the one shared strict-count policy and revalidate
     assert.equal(h.reads(), 2)
     assert.equal(h.calls.length, 1)
     assert.deepEqual(h.calls[0], {
-      themes: ['Algebra'], blockedThemes: [], count: 4, group, strictCount: true, seed: 'fixed'
+      themes: ['Algebra'], blockedThemes: [],
+      allowedThemes: ['Algebra'], curriculumThemes: ['Algebra', 'Negative Zahlen'],
+      count: 4, group, strictCount: true, seed: 'fixed'
     })
     assert.equal(h.directManifests[0].offer, offer)
     assert.equal(h.directManifests[0].level, group)
@@ -164,6 +180,23 @@ test('rejects a recommendation that changes level while task documents are loadi
   await assert.rejects(
     h.generate({ courseUrl, recommendation: recommendation('practice', 'Fortgeschritten') }),
     error => error instanceof LearningGenerationError && error.code === 'STALE_RECOMMENDATION'
+  )
+  assert.equal(h.reads(), 2)
+})
+
+test('rejects a changed evidenced topic context after shared generator I/O', async () => {
+  const h = harness(report(), async (_query, controls) => {
+    const algebra = topic('Algebra')
+    controls.setReport(report({
+      topics: [algebra, topic('Geometrie')],
+      weaknessTopics: [algebra]
+    }))
+    return sharedOutput()
+  })
+  await assert.rejects(
+    h.generate({ courseUrl, recommendation: recommendation('practice', 'Fortgeschritten') }),
+    error => error instanceof LearningGenerationError && error.code === 'STALE_RECOMMENDATION' &&
+      /Lernkontext/.test(error.message)
   )
   assert.equal(h.reads(), 2)
 })

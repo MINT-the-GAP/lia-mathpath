@@ -68,6 +68,13 @@ button:focus-visible,select:focus-visible{
   color:var(--_accent-contrast);
   box-shadow:0 1px 2px rgba(var(--lia-mathpath-text-rgb,35,40,44),.16);
 }
+.intro{
+  max-width:52em;
+  margin:0 0 .9em;
+  color:var(--_muted);
+  font-size:.9375em;
+  line-height:1.5;
+}
 .create[aria-busy=true]::after{
   width:.85em;
   height:.85em;
@@ -302,6 +309,9 @@ export function registerLearningPathElement(
       const shadow = this.attachShadow({ mode: 'open' });
       const style = doc.createElement('style');
       style.textContent = CSS;
+      const intro = doc.createElement('p');
+      intro.className = 'intro';
+      intro.textContent = 'Hier findest du passende Übungen für deinen nächsten Lernschritt. Wähle ein Thema aus und öffne anschließend einen Kurs mit vier Aufgaben.';
       this.button = doc.createElement('button');
       this.button.type = 'button';
       this.button.className = 'create lia-btn lia-btn--primary';
@@ -323,7 +333,7 @@ export function registerLearningPathElement(
       this.warnings.setAttribute('aria-live', 'polite');
       this.warnings.setAttribute('aria-atomic', 'true');
       this.warnings.setAttribute('data-state', 'warning');
-      shadow.append(style, this.button, this.status, this.warnings, this.results);
+      shadow.append(style, intro, this.button, this.status, this.warnings, this.results);
       this.button.addEventListener('click', () => { void this.refresh(); });
     }
     disconnectedCallback(): void {

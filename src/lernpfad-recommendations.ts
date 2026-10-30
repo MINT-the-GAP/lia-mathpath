@@ -13,19 +13,21 @@ export function selectLearningRecommendation(
   const base = { type, topic: topic?.topic ?? null, taskCount: 4 as const };
   if (type === 'weakness' && (phase === 'collect' || phase === 'grading')) {
     return { ...base, topic: null, targetLevel: 'Einsteiger', available: false,
-      reason: 'Empfehlungen zum Wiederholen von Grundlagen stehen nach der freigegebenen Auswertung zur Verfügung.' };
+      reason: 'Deine Empfehlungen zum Wiederholen von Grundlagen werden angezeigt, sobald die Auswertung freigegeben ist.' };
   }
   if (!topic) return { ...base, targetLevel: type === 'weakness' ? 'Einsteiger' : null, available: false,
-    reason: type === 'weakness' ? 'Keine falschen, teilweise richtigen oder nachweislich unbearbeiteten Aufgaben gefunden.' : 'Es sind keine Aufgabenthemen verfügbar.' };
+    reason: type === 'weakness' ? 'Zurzeit gibt es keine Grundlagen, die du wiederholen musst.' : 'Für diesen Kurs sind derzeit keine passenden Themen verfügbar.' };
   if (type === 'weakness') return { ...base, targetLevel: 'Einsteiger', available: true,
-    reason: `${topic.weaknessCount} Aufgaben sind falsch, teilweise richtig oder nachweislich unbearbeitet. Jede Aufgabe zählt einmal pro Thema.` };
+    reason: `Wiederhole die Grundlagen zu „${topic.topic}“ und festige die Inhalte, bei denen du noch unsicher bist.` };
   if (!topic.level) return { ...base, targetLevel: null, available: false,
-    reason: `${topic.taskCount} Aufgaben zu diesem Thema. Das bisherige Niveau ist nicht angegeben.` };
+    reason: `Für „${topic.topic}“ ist noch kein passendes Übungsniveau angegeben.` };
   if (type === 'practice') return { ...base, targetLevel: topic.level, available: true,
-    reason: `${topic.taskCount} Aufgaben zu diesem Thema. ${topic.levelReason}` };
+    reason: `Übe „${topic.topic}“ auf demselben Niveau weiter und festige dein Wissen.` };
   const next = LEVELS[LEVELS.indexOf(topic.level) + 1];
   return { ...base, targetLevel: next ?? null, available: !!next,
-    reason: next ? `Eine Stufe über ${topic.level}. ${topic.levelReason}` : 'Das bisherige Niveau ist Experte. Eine höhere Stufe ist nicht vorgesehen.' };
+    reason: next
+      ? `Stelle dich neuen Herausforderungen und vertiefe „${topic.topic}“ auf der nächsten Schwierigkeitsstufe.`
+      : `Du übst „${topic.topic}“ bereits auf der höchsten Schwierigkeitsstufe.` };
 }
 
 /** Pure aggregation; never converts missing state into an unanswered task. */

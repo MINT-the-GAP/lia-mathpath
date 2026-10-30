@@ -22,6 +22,10 @@ export interface SharedGeneratorTask extends SharedCatalogTask {}
 export interface SharedGeneratorRequest {
   themes: string[];
   blockedThemes: string[];
+  /** Topics already evidenced by @ADetails in the source course. */
+  allowedThemes?: string[];
+  /** Complete topic vocabulary used to reject unseen curricular co-topics. */
+  curriculumThemes?: string[];
   count: number;
   group: 'einsteiger' | 'fortgeschrittene' | 'experten';
   strictCount: boolean;
@@ -83,7 +87,7 @@ type RuntimeWindow = Window & typeof globalThis & {
 };
 
 export const SHARED_COURSE_BASE_URL = 'https://mint-the-gap.github.io/Aufgabensammlung/';
-export const SHARED_COURSE_RELEASE = '1.0.5';
+export const SHARED_COURSE_RELEASE = '1.0.6';
 const LOAD_TIMEOUT_MS = 20_000;
 const loads = new WeakMap<Document, Promise<SharedCourseRuntime>>();
 

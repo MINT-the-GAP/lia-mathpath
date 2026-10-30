@@ -28,6 +28,10 @@ test('loads only on click, owns its controls, and updates each offer without qui
     const html = quiz.outerHTML
     assert.equal(reads, 0)
     assert.equal(host.shadowRoot.querySelectorAll('button').length, 1)
+    assert.equal(
+      host.shadowRoot.querySelector('.intro').textContent,
+      'Hier findest du passende Übungen für deinen nächsten Lernschritt. Wähle ein Thema aus und öffne anschließend einen Kurs mit vier Aufgaben.'
+    )
     host.shadowRoot.querySelector('button').click()
     await tick()
     assert.equal(reads, 1)
@@ -39,7 +43,7 @@ test('loads only on click, owns its controls, and updates each offer without qui
     deepen.value = 'Transfer'
     deepen.dispatchEvent(new dom.window.Event('change'))
     assert.equal(host.report.recommendations[2].available, false)
-    assert.match(host.shadowRoot.querySelector('[data-offer=deepen] .reason').textContent, /höhere Stufe/)
+    assert.match(host.shadowRoot.querySelector('[data-offer=deepen] .reason').textContent, /höchsten Schwierigkeitsstufe/)
     const copy = host.report
     copy.topics[0].topic = 'changed'
     assert.equal(host.report.topics[0].topic, 'Algebra')
@@ -61,6 +65,9 @@ test('renders a compact token-based LiaScript interface with responsive and acce
     const host = dom.window.document.querySelector('lia-mathpath-lernpfad')
     const root = host.shadowRoot
     const create = root.querySelector('button.create')
+    const intro = root.querySelector('.intro')
+    assert.ok(intro)
+    assert.ok(intro.compareDocumentPosition(create) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING)
     assert.ok(create.classList.contains('lia-btn'))
     assert.ok(create.classList.contains('lia-btn--primary'))
     assert.equal(create.getAttribute('aria-controls'), 'lia-mathpath-summary lia-mathpath-offers')
@@ -102,6 +109,14 @@ test('renders a compact token-based LiaScript interface with responsive and acce
     assert.deepEqual(
       sections.map(section => section.querySelector('select').getAttribute('aria-label')),
       ['Thema für Grundlagen wiederholen', 'Thema für Weitere Übungen', 'Thema für Vertiefungen']
+    )
+    assert.deepEqual(
+      sections.map(section => section.querySelector('.reason').textContent),
+      [
+        'Wiederhole die Grundlagen zu „Algebra“ und festige die Inhalte, bei denen du noch unsicher bist.',
+        'Übe „Algebra“ auf demselben Niveau weiter und festige dein Wissen.',
+        'Stelle dich neuen Herausforderungen und vertiefe „Algebra“ auf der nächsten Schwierigkeitsstufe.'
+      ]
     )
     for (const section of sections) {
       const title = section.querySelector('h3')

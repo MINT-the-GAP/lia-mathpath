@@ -37,6 +37,33 @@ test('mixed level mode resolves ties downwards; unknown levels are not fabricate
   assert.equal(selectLearningRecommendation('deepen', { ...report.topics[0], level: 'Experte' }, 'live').available, false)
 })
 
+test('describes the three offers in learner-facing language for the selected topic', () => {
+  const topic = {
+    topic: 'Bruchrechnung', taskCount: 8, weaknessCount: 5, partialCount: 1,
+    unavailableCount: 0, level: 'Einsteiger', levelReason: 'Technische Auswertung'
+  }
+  assert.equal(
+    selectLearningRecommendation('weakness', topic, 'live').reason,
+    'Wiederhole die Grundlagen zu „Bruchrechnung“ und festige die Inhalte, bei denen du noch unsicher bist.'
+  )
+  assert.equal(
+    selectLearningRecommendation('practice', topic, 'live').reason,
+    'Übe „Bruchrechnung“ auf demselben Niveau weiter und festige dein Wissen.'
+  )
+  assert.equal(
+    selectLearningRecommendation('deepen', topic, 'live').reason,
+    'Stelle dich neuen Herausforderungen und vertiefe „Bruchrechnung“ auf der nächsten Schwierigkeitsstufe.'
+  )
+  assert.doesNotMatch(
+    [
+      selectLearningRecommendation('weakness', topic, 'live').reason,
+      selectLearningRecommendation('practice', topic, 'live').reason,
+      selectLearningRecommendation('deepen', topic, 'live').reason,
+    ].join(' '),
+    /Aufgaben sind|Häufigstes angegebenes Niveau|Niveau für/
+  )
+})
+
 test('Send suppresses even accidentally supplied prior correctness while retaining topic metadata', () => {
   for (const phase of ['collect', 'grading']) {
     const report = buildLearningReport(course([task('a', ['A'])]), snapshot([['a', 'wrong']], phase))
