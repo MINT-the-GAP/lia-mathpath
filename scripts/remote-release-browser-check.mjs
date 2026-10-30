@@ -8,7 +8,7 @@ import { access } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { gzipSync } from 'fflate'
+import { gunzipSync, gzipSync } from 'fflate'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const release = process.env.MATHPATH_RELEASE_VERSION || '0.0.18'
@@ -134,6 +134,19 @@ function gzipCourse(markdown) {
   return dataCoursePrefix + Buffer.from(bytes).toString('base64')
 }
 
+function decodeOfficialDataCourse(url) {
+  const parsed = new URL(url)
+  assert.equal(parsed.origin, 'https://liascript.github.io')
+  assert.equal(parsed.pathname, '/course/')
+  const uri = parsed.search.slice(1)
+  assert.ok(uri.startsWith(dataCoursePrefix), 'Generated course is not a LiaScript gzip data URI')
+  const bytes = Buffer.from(uri.slice(dataCoursePrefix.length), 'base64')
+  return {
+    uri,
+    body: Buffer.from(gunzipSync(bytes)).toString('utf8')
+  }
+}
+
 async function adetailsStyle(page) {
   await page.waitForFunction(() => {
     const walk = root => {
@@ -182,6 +195,14 @@ async function adetailsStyle(page) {
 async function navigate(page, slide) {
   await page.evaluate(value => { location.hash = '#' + value }, slide)
   await page.waitForFunction(value => location.hash === '#' + value, slide)
+}
+
+async function findLearningPathSlide(page, maximum = 30) {
+  for (let slide = 1; slide <= maximum; slide++) {
+    await navigate(page, slide)
+    if (await page.locator('lia-mathpath-lernpfad').count()) return slide
+  }
+  throw new Error(`Generated course has no @Lernpfad slide within ${maximum} slides`)
 }
 
 async function run() {
@@ -314,6 +335,64 @@ async function run() {
       warnings: learningReport.warnings,
       topicTaskCount: 13
     })
+
+    const practice = host.locator('section[data-offer=practice]')
+    const openCourse = practice.locator('button.open-course')
+    await expect(openCourse).toBeEnabled()
+    const popupPromise = context.waitForEvent('page')
+    await openCourse.click()
+    const generatedPage = await popupPromise
+    generatedPage.setDefaultTimeout(timeout)
+    generatedPage.on('pageerror', error => report.pageErrors.push(String(error)))
+    await generatedPage.waitForURL(url =>
+      url.origin === 'https://liascript.github.io' &&
+      url.pathname === '/course/' &&
+      url.search.startsWith(`?${dataCoursePrefix}`), { timeout })
+    assert.equal(await generatedPage.evaluate(() => window.opener === null), true)
+    await generatedPage.waitForFunction(() =>
+      typeof window.__LIA_MATHPATH__?.getLearningRecommendations === 'function' &&
+      typeof customElements.get('lia-mathpath-lernpfad') === 'function')
+
+    const generated = decodeOfficialDataCourse(generatedPage.url())
+    const generatedImports = generated.body.split(/\r?\n/)
+      .filter(line => /^import: .*lia-mathpath.*README\.md/i.test(line))
+    assert.deepEqual(generatedImports, [`import: ${readmeUrl}`])
+    assert.equal((generated.body.match(/^mode:\s*Presentation$/gm) || []).length, 1)
+    assert.doesNotMatch(generated.body, /^mode:\s*Textbook$/m)
+    assert.doesNotMatch(generated.body, /lia-freeze|FreezeREADME|@Abgabe|@Auswertung/i)
+    assert.equal((generated.body.match(/^@Lernpfad$/gm) || []).length, 1)
+
+    const generatedSlide = await findLearningPathSlide(generatedPage)
+    const generatedHost = generatedPage.locator('lia-mathpath-lernpfad')
+    const generatedButton = generatedHost.locator('button.create')
+    await expect(generatedButton).toBeVisible()
+    await generatedButton.click()
+    await generatedPage.waitForFunction(() => {
+      const host = document.querySelector('lia-mathpath-lernpfad')
+      const button = host?.shadowRoot?.querySelector('button.create')
+      return button && !button.disabled && button.getAttribute('aria-busy') !== 'true'
+    })
+    const generatedState = await generatedHost.evaluate(element => ({
+      report: element.report,
+      summary: element.shadowRoot?.querySelector('.summary')?.textContent?.trim() || '',
+      summaryState: element.shadowRoot?.querySelector('.summary')?.getAttribute('data-state') || ''
+    }))
+    assert.ok(generatedState.report,
+      `Generated @Lernpfad failed: ${JSON.stringify(generatedState)}`)
+    await expect(generatedHost.locator('section[data-offer]')).toHaveCount(3)
+    const generatedReport = generatedState.report
+    assert.equal(generatedReport.statusCounts.unavailable, 0)
+    assert.deepEqual(generatedReport.warnings, [])
+    assert.ok(generatedReport.statusCounts.unanswered >= 4)
+    assert.equal((await generatedHost.locator('.warnings').textContent())?.trim(), '')
+    check('Public generator opens a Presentation course with one pinned import and no warnings', {
+      slide: generatedSlide,
+      characters: generated.body.length,
+      imports: generatedImports,
+      statusCounts: generatedReport.statusCounts,
+      warnings: generatedReport.warnings
+    })
+    await generatedPage.close()
 
     const bundleResponses = report.responses.filter(response =>
       response.url === expectedBundleRequestUrl.toString())
