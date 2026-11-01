@@ -407,7 +407,7 @@ async function run() {
       allowedTopics: [...allowedTopics],
       selected: selectedCatalogTasks.map(task => ({ id: task.id, topics: task.topics }))
     })
-    assert.equal(openingUrl.search, '?v=1.0.9')
+    assert.equal(openingUrl.search, '?v=1.0.10')
     const openCalls = await page.evaluate(() => window.__MATHPATH_OPEN_CALLS__)
     assert.equal(openCalls.length, 1)
     assert.deepEqual(openCalls[0], {
@@ -456,7 +456,7 @@ async function run() {
     const intro = source.body.slice(0, source.body.indexOf('# BROWSER_TASK_'))
     assert.equal(count(intro, /^---$/gm), 8)
     assert.equal(count(source.body,
-      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.22$/gm), 1)
+      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.24$/gm), 1)
     assert.deepEqual(
       source.body.match(/^comment:.*$/gm),
       ['comment: Übe das Thema „Grundrechenarten“ auf deinem bisherigen Niveau weiter und gewinne mehr Sicherheit.']

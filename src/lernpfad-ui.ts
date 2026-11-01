@@ -22,9 +22,10 @@ const CSS = `
   font-weight:400;
   line-height:1.45;
   color-scheme:light dark;
-  --_accent:rgb(var(--lia-mathpath-light-accent-rgb,67,143,145));
-  --_accent-contrast:rgb(var(--lia-mathpath-light-accent-contrast-rgb,0,0,0));
-  --_accent-soft:rgba(var(--lia-mathpath-light-accent-rgb,67,143,145),.18);
+  --_accent:rgb(var(--lia-mathpath-light-accent-rgb,30,181,184));
+  --_accent-contrast:rgb(255,255,255);
+  --_accent-soft:rgba(var(--lia-mathpath-light-accent-rgb,30,181,184),.3);
+  --_accent-badge:rgba(var(--lia-mathpath-light-accent-rgb,30,181,184),.46);
   --_surface:rgb(var(--lia-mathpath-surface-rgb,255,255,255));
   --_surface-soft:rgba(var(--lia-mathpath-surface-rgb,255,255,255),.72);
   --_text:rgb(var(--lia-mathpath-text-rgb,35,40,44));
@@ -67,6 +68,8 @@ button:focus-visible,select:focus-visible{
   border:1px solid var(--_accent);
   background:var(--_accent);
   color:var(--_accent-contrast);
+  font-weight:700;
+  text-shadow:0 1px 1px rgba(0,0,0,.9),0 0 2px rgba(0,0,0,.7);
   box-shadow:0 1px 2px rgba(var(--lia-mathpath-text-rgb,35,40,44),.16);
 }
 .intro{
@@ -81,7 +84,7 @@ button:focus-visible,select:focus-visible{
   width:.85em;
   height:.85em;
   flex:0 0 auto;
-  border:2px solid rgba(var(--lia-mathpath-light-accent-contrast-rgb,0,0,0),.35);
+  border:2px solid rgba(255,255,255,.45);
   border-top-color:var(--_accent-contrast);
   border-radius:50%;
   content:"";
@@ -147,7 +150,7 @@ section{
   border:1px solid var(--_border);
   border-top:3px solid var(--_accent);
   border-radius:.75em;
-  background:linear-gradient(180deg,rgba(var(--lia-mathpath-light-accent-rgb,67,143,145),.26),var(--_accent-soft) 4.25em,transparent 8em),var(--_surface-soft);
+  background:linear-gradient(180deg,rgba(var(--lia-mathpath-light-accent-rgb,30,181,184),.38),var(--_accent-soft) 4.75em,transparent 8.5em),var(--_surface-soft);
   box-shadow:0 1px 3px rgba(var(--lia-mathpath-text-rgb,35,40,44),.08);
 }
 h3{
@@ -179,9 +182,9 @@ h3{
   align-items:center;
   gap:.35em;
   padding:.28em .42em .28em .62em;
-  border:1px solid rgba(var(--lia-mathpath-light-accent-rgb,67,143,145),.62);
+  border:1px solid rgba(var(--lia-mathpath-light-accent-rgb,30,181,184),.74);
   border-radius:.45em;
-  background:var(--_accent-soft);
+  background:var(--_accent-badge);
   color:var(--_text);
   font-size:.875em;
   font-weight:600;
@@ -204,7 +207,7 @@ h3{
   font-size:1em;
   line-height:1;
 }
-.topic-chip button:hover:not(:disabled){background:rgba(var(--lia-mathpath-light-accent-rgb,67,143,145),.32)}
+.topic-chip button:hover:not(:disabled){background:rgba(var(--lia-mathpath-light-accent-rgb,30,181,184),.58)}
 select{
   display:block;
   width:100%;
@@ -212,7 +215,7 @@ select{
   max-width:100%;
   margin-top:.3em;
   padding:.55em .7em;
-  border:1px solid rgba(var(--lia-mathpath-light-accent-rgb,67,143,145),.48);
+  border:1px solid rgba(var(--lia-mathpath-light-accent-rgb,30,181,184),.65);
   border-radius:.35em;
   background:var(--_surface);
   color:var(--_text);
@@ -230,7 +233,8 @@ select{
   margin:0;
   padding:.2em .55em;
   border-radius:999px;
-  background:var(--_accent-soft);
+  border:1px solid rgba(var(--lia-mathpath-light-accent-rgb,30,181,184),.58);
+  background:var(--_accent-badge);
   color:var(--_text);
   font-size:.8125em;
   font-weight:650;
@@ -252,6 +256,8 @@ select{
   border:1px solid var(--_accent);
   background:var(--_accent);
   color:var(--_accent-contrast);
+  font-weight:700;
+  text-shadow:0 1px 1px rgba(0,0,0,.9),0 0 2px rgba(0,0,0,.7);
   box-shadow:0 1px 2px rgba(var(--lia-mathpath-text-rgb,35,40,44),.12);
 }
 .open-course:hover:not(:disabled){

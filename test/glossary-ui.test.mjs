@@ -305,7 +305,7 @@ test('follows LiaScript light and dark theme tokens instead of arbitrary button 
 
     assert.equal(value('--lia-mathpath-accent-rgb'), '20, 115, 117')
     assert.equal(value('--lia-mathpath-accent-contrast-rgb'), '255, 255, 255')
-    assert.equal(value('--lia-mathpath-light-accent-rgb'), '67, 143, 145')
+    assert.equal(value('--lia-mathpath-light-accent-rgb'), '30, 181, 184')
     assert.equal(value('--lia-mathpath-light-accent-contrast-rgb'), '0, 0, 0')
     assert.equal(value('--lia-mathpath-surface-rgb'), '250, 250, 250')
     assert.equal(value('--lia-mathpath-text-rgb'), '24, 28, 34')
@@ -315,7 +315,7 @@ test('follows LiaScript light and dark theme tokens instead of arbitrary button 
 
     assert.equal(value('--lia-mathpath-accent-rgb'), '150, 230, 235')
     assert.equal(value('--lia-mathpath-accent-contrast-rgb'), '0, 0, 0')
-    assert.equal(value('--lia-mathpath-light-accent-rgb'), '171, 235, 239')
+    assert.equal(value('--lia-mathpath-light-accent-rgb'), '147, 232, 238')
     assert.equal(value('--lia-mathpath-light-accent-contrast-rgb'), '0, 0, 0')
     assert.equal(value('--lia-mathpath-surface-rgb'), '35, 39, 45')
     assert.equal(value('--lia-mathpath-text-rgb'), '245, 247, 250')

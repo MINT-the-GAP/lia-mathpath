@@ -185,7 +185,8 @@ async function verifyUi(page, report) {
       columns: getComputedStyle(offers).gridTemplateColumns.split(/\s+/).filter(Boolean).length,
       warningBeforeOffers: !!(warning.compareDocumentPosition(offers) & Node.DOCUMENT_POSITION_FOLLOWING),
       openButtonColor: getComputedStyle(open).color,
-      openButtonBackground: getComputedStyle(open).backgroundColor
+      openButtonBackground: getComputedStyle(open).backgroundColor,
+      openButtonTextShadow: getComputedStyle(open).textShadow
     }
   })
   assert.equal(desktop.fontSize, '16px')
@@ -193,13 +194,14 @@ async function verifyUi(page, report) {
   assert.ok(desktop.buttonWidth < desktop.hostWidth, JSON.stringify(desktop))
   assert.equal(desktop.columns, 3)
   assert.equal(desktop.warningBeforeOffers, true)
-  assert.ok(contrastRatio(desktop.openButtonColor, desktop.openButtonBackground) >= 4.5, JSON.stringify(desktop))
+  assert.equal(desktop.openButtonColor, 'rgb(255, 255, 255)')
+  assert.notEqual(desktop.openButtonTextShadow, 'none')
 
   const dark = await host.evaluate(element => {
     const root = element.shadowRoot
     const properties = {
       '--lia-mathpath-accent-rgb': '84, 196, 198',
-      '--lia-mathpath-accent-contrast-rgb': '0, 0, 0',
+      '--lia-mathpath-light-accent-rgb': '30, 181, 184',
       '--lia-mathpath-surface-rgb': '18, 28, 30',
       '--lia-mathpath-text-rgb': '230, 239, 240'
     }
@@ -210,13 +212,15 @@ async function verifyUi(page, report) {
       selectColor: getComputedStyle(select).color,
       selectBackground: getComputedStyle(select).backgroundColor,
       openButtonColor: getComputedStyle(open).color,
-      openButtonBackground: getComputedStyle(open).backgroundColor
+      openButtonBackground: getComputedStyle(open).backgroundColor,
+      openButtonTextShadow: getComputedStyle(open).textShadow
     }
     for (const name of Object.keys(properties)) element.style.removeProperty(name)
     return result
   })
   assert.ok(contrastRatio(dark.selectColor, dark.selectBackground) >= 4.5, JSON.stringify(dark))
-  assert.ok(contrastRatio(dark.openButtonColor, dark.openButtonBackground) >= 4.5, JSON.stringify(dark))
+  assert.equal(dark.openButtonColor, 'rgb(255, 255, 255)')
+  assert.notEqual(dark.openButtonTextShadow, 'none')
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))

@@ -6,7 +6,7 @@ const ACCENT_CONTRAST_VAR = '--lia-mathpath-accent-contrast-rgb';
 const LIGHT_ACCENT_VAR = '--lia-mathpath-light-accent-rgb';
 const LIGHT_ACCENT_CONTRAST_VAR = '--lia-mathpath-light-accent-contrast-rgb';
 const DEFAULT_ACCENT = '20, 115, 117';
-const DEFAULT_LIGHT_ACCENT = '84, 196, 198';
+const DEFAULT_LIGHT_ACCENT = '30, 181, 184';
 const SURFACE_VAR = '--lia-mathpath-surface-rgb';
 const TEXT_VAR = '--lia-mathpath-text-rgb';
 const DEFAULT_SURFACE = '255, 255, 255';
@@ -143,17 +143,42 @@ function accentContrast(accent: string): string {
 
 function lightAccent(accent: string): string {
   const channels = parseRgbChannels(accent);
-  const dark = parseRgbChannels(DARK_ACCENT_CONTRAST);
-  if (!channels || !dark) return DEFAULT_LIGHT_ACCENT;
+  if (!channels) return DEFAULT_LIGHT_ACCENT;
 
-  let whiteShare = 0.2;
-  let mixed: RgbChannels = channels;
-  do {
-    mixed = channels.map(channel => clampChannel(channel + (255 - channel) * whiteShare)) as RgbChannels;
-    whiteShare += 0.05;
-  } while (contrastRatio(mixed, dark) < 5 && whiteShare <= 0.8);
-
-  return mixed.join(', ');
+  const normalized = channels.map(channel => channel / 255) as RgbChannels;
+  const maximum = Math.max(...normalized);
+  const minimum = Math.min(...normalized);
+  const delta = maximum - minimum;
+  const lightness = (maximum + minimum) / 2;
+  let hue = 0;
+  if (delta > 0) {
+    if (maximum === normalized[0]) {
+      hue = ((normalized[1] - normalized[2]) / delta + (normalized[1] < normalized[2] ? 6 : 0)) / 6;
+    } else if (maximum === normalized[1]) {
+      hue = ((normalized[2] - normalized[0]) / delta + 2) / 6;
+    } else {
+      hue = ((normalized[0] - normalized[1]) / delta + 4) / 6;
+    }
+  }
+  const saturation = delta === 0 ? 0 : delta / (1 - Math.abs(2 * lightness - 1));
+  const vividSaturation = Math.max(saturation, 0.72);
+  const vividLightness = Math.max(lightness, 0.42);
+  const hueChannel = (offset: number): number => {
+    let position = hue + offset;
+    if (position < 0) position += 1;
+    if (position > 1) position -= 1;
+    const high = vividLightness < 0.5
+      ? vividLightness * (1 + vividSaturation)
+      : vividLightness + vividSaturation - vividLightness * vividSaturation;
+    const low = 2 * vividLightness - high;
+    if (position < 1 / 6) return low + (high - low) * 6 * position;
+    if (position < 1 / 2) return high;
+    if (position < 2 / 3) return low + (high - low) * (2 / 3 - position) * 6;
+    return low;
+  };
+  return [hueChannel(1 / 3), hueChannel(0), hueChannel(-1 / 3)]
+    .map(channel => clampChannel(channel * 255))
+    .join(', ');
 }
 
 function setRootProperty(property: string, value: string): void {
