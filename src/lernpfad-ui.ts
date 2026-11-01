@@ -164,6 +164,47 @@ h3{
   font-size:.875em;
   font-weight:600;
 }
+.secondary-label{margin-top:.05em}
+.topic-chips{
+  display:flex;
+  min-height:.25em;
+  flex-wrap:wrap;
+  gap:.4em;
+  margin:.45em 0 .2em;
+}
+.topic-chips:empty{display:none}
+.topic-chip{
+  display:inline-flex;
+  max-width:100%;
+  align-items:center;
+  gap:.35em;
+  padding:.28em .42em .28em .62em;
+  border:1px solid rgba(var(--lia-mathpath-accent-rgb,20,115,117),.35);
+  border-radius:.45em;
+  background:var(--_accent-soft);
+  color:var(--_text);
+  font-size:.875em;
+  font-weight:600;
+}
+.topic-chip span{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.topic-chip button{
+  display:inline-grid;
+  width:1.55em;
+  min-height:1.55em;
+  padding:0;
+  place-items:center;
+  border:0;
+  border-radius:.3em;
+  background:transparent;
+  color:inherit;
+  font-size:1em;
+  line-height:1;
+}
+.topic-chip button:hover:not(:disabled){background:rgba(var(--lia-mathpath-accent-rgb,20,115,117),.18)}
 select{
   display:block;
   width:100%;
@@ -262,7 +303,7 @@ select{
   .retry{border-color:Highlight;background:Highlight;color:HighlightText;box-shadow:none}
   .open-course{border-color:LinkText;color:LinkText}
   .open-course:hover:not(:disabled){background:Highlight;color:HighlightText}
-  section,.summary-item,.summary-message,.level,.count,.warnings,.course-status,select{border-color:CanvasText;background:Canvas;color:CanvasText;box-shadow:none}
+  section,.summary-item,.summary-message,.level,.count,.topic-chip,.warnings,.course-status,select{border-color:CanvasText;background:Canvas;color:CanvasText;box-shadow:none}
   button:disabled,select:disabled{border-color:GrayText;color:GrayText}
 }
 `;
@@ -281,6 +322,10 @@ export function registerLearningPathElement(
   const runtimeWindow = win;
   class LearningPathElement extends win.HTMLElement {
     private value: LearningReport | null = null;
+    private selectionCourseUrl: string | null = null;
+    private secondarySelections: Record<LearningOfferType, string[]> = {
+      weakness: [], practice: [], deepen: []
+    };
     private request = 0;
     private generation = 0;
     private refreshing = false;
@@ -331,7 +376,7 @@ export function registerLearningPathElement(
       style.textContent = CSS;
       const intro = doc.createElement('p');
       intro.className = 'intro';
-      intro.textContent = 'Hier findest du passende Übungen für deinen nächsten Lernschritt. Wähle ein Thema aus und öffne anschließend einen Kurs mit vier Aufgaben.';
+      intro.textContent = 'Hier findest du passende Übungen für deinen nächsten Lernschritt. Wähle ein Hauptthema und bei Bedarf Nebenthemen aus und öffne anschließend einen Kurs mit vier Aufgaben.';
       this.retryButton = doc.createElement('button');
       this.retryButton.type = 'button';
       this.retryButton.className = 'retry lia-btn lia-btn--primary';
@@ -433,6 +478,10 @@ export function registerLearningPathElement(
       try {
         const report = await load();
         if (request !== this.request || !this.isConnected) return;
+        if (this.selectionCourseUrl !== report.courseUrl) {
+          this.selectionCourseUrl = report.courseUrl;
+          this.secondarySelections = { weakness: [], practice: [], deepen: [] };
+        }
         this.value = JSON.parse(JSON.stringify(report));
         this.render();
         // With MathPath before Freeze in the import list, the custom element
@@ -583,6 +632,7 @@ export function registerLearningPathElement(
         section.setAttribute('data-offer', recommendation.type);
         const titleId = `lia-mathpath-offer-${index}-title`;
         const selectId = `lia-mathpath-offer-${index}-topic`;
+        const secondarySelectId = `lia-mathpath-offer-${index}-secondary-topic`;
         const reasonId = `lia-mathpath-offer-${index}-reason`;
         const statusId = `lia-mathpath-offer-${index}-status`;
         section.setAttribute('aria-labelledby', titleId);
@@ -592,10 +642,10 @@ export function registerLearningPathElement(
         const label = doc.createElement('label');
         label.className = 'topic-label';
         label.htmlFor = selectId;
-        label.textContent = 'Thema';
+        label.textContent = 'Hauptthema';
         const select = doc.createElement('select');
         select.id = selectId;
-        select.setAttribute('aria-label', `Thema für ${title.textContent}`);
+        select.setAttribute('aria-label', `Hauptthema für ${title.textContent}`);
         const topics = recommendation.type === 'weakness' ? report.weaknessTopics : report.topics;
         for (const topic of topics) {
           const option = doc.createElement('option');
@@ -611,6 +661,72 @@ export function registerLearningPathElement(
           select.disabled = true;
         } else select.value = recommendation.topic || topics[0].topic;
         label.append(select);
+        const secondaryLabel = doc.createElement('label');
+        secondaryLabel.className = 'topic-label secondary-label';
+        secondaryLabel.htmlFor = secondarySelectId;
+        secondaryLabel.append(doc.createTextNode('Nebenthemen'));
+        const chips = doc.createElement('div');
+        chips.className = 'topic-chips';
+        chips.setAttribute('aria-label', 'Gewählte Nebenthemen');
+        const secondarySelect = doc.createElement('select');
+        secondarySelect.id = secondarySelectId;
+        secondarySelect.setAttribute('aria-label', `Nebenthema für ${title.textContent} hinzufügen`);
+        const normalized = (value: string): string => value.trim().replace(/\s+/g, ' ')
+          .normalize('NFC').toLocaleLowerCase('de-DE');
+        const secondaryOptions = report.secondaryTopicOptions?.[recommendation.type] ||
+          (recommendation.type === 'weakness' ? report.weaknessTopics : report.topics)
+            .map(topic => topic.topic);
+        let selectedSecondary = this.secondarySelections[recommendation.type]
+          .filter(topic => secondaryOptions.some(option => normalized(option) === normalized(topic)))
+          .filter(topic => normalized(topic) !== normalized(select.value))
+          .slice(0, 3);
+        this.secondarySelections[recommendation.type] = [...selectedSecondary];
+        const renderSecondary = (): void => {
+          selectedSecondary = selectedSecondary
+            .filter(topic => normalized(topic) !== normalized(select.value))
+            .slice(0, 3);
+          this.secondarySelections[recommendation.type] = [...selectedSecondary];
+          chips.replaceChildren();
+          for (const topic of selectedSecondary) {
+            const chip = doc.createElement('span');
+            chip.className = 'topic-chip';
+            const text = doc.createElement('span');
+            text.textContent = topic;
+            const remove = doc.createElement('button');
+            remove.type = 'button';
+            remove.textContent = '×';
+            remove.setAttribute('aria-label', `Nebenthema ${topic} entfernen`);
+            remove.disabled = this.generating;
+            remove.addEventListener('click', () => {
+              selectedSecondary = selectedSecondary.filter(entry => normalized(entry) !== normalized(topic));
+              renderSecondary();
+              update();
+            });
+            chip.append(text, remove);
+            chips.append(chip);
+          }
+          secondarySelect.replaceChildren();
+          const placeholder = doc.createElement('option');
+          placeholder.value = '';
+          const available = secondaryOptions.filter(topic =>
+            normalized(topic) !== normalized(select.value) &&
+            !selectedSecondary.some(selected => normalized(selected) === normalized(topic)));
+          placeholder.textContent = selectedSecondary.length >= 3
+            ? 'Maximal 3 Nebenthemen gewählt'
+            : available.length ? 'Nebenthema hinzufügen' : 'Keine weiteren Nebenthemen verfügbar';
+          secondarySelect.append(placeholder);
+          if (selectedSecondary.length < 3) {
+            for (const topic of available) {
+              const option = doc.createElement('option');
+              option.value = topic;
+              option.textContent = topic;
+              secondarySelect.append(option);
+            }
+          }
+          secondarySelect.value = '';
+          secondarySelect.disabled = this.generating || secondarySelect.options.length === 1;
+        };
+        secondaryLabel.append(chips, secondarySelect);
         const meta = doc.createElement('div');
         meta.className = 'meta';
         const level = doc.createElement('p');
@@ -636,6 +752,7 @@ export function registerLearningPathElement(
         courseStatus.setAttribute('data-state', 'idle');
         const update = (): void => {
           const choice = selectLearningRecommendation(recommendation.type, topics.find(t => t.topic === select.value), report.phase);
+          choice.secondaryTopics = [...selectedSecondary];
           const generationAllowed = report.phase !== 'collect' && report.phase !== 'grading';
           report.recommendations[index] = choice;
           section.setAttribute('data-available', String(choice.available));
@@ -648,7 +765,7 @@ export function registerLearningPathElement(
             !generationAllowed
               ? `Kurs für ${title.textContent} kann erst nach der freigegebenen Auswertung geöffnet werden`
               : choice.topic
-              ? `Kurs mit 4 Aufgaben zu ${choice.topic} öffnen`
+              ? `Kurs mit 4 Aufgaben zu ${[choice.topic, ...choice.secondaryTopics].join(', ')} öffnen`
               : `Kurs für ${title.textContent} ist nicht verfügbar`
           );
           this.setCourseStatus(
@@ -659,10 +776,21 @@ export function registerLearningPathElement(
             generationAllowed ? 'idle' : 'blocked'
           );
         };
-        select.addEventListener('change', update);
+        select.addEventListener('change', () => {
+          renderSecondary();
+          update();
+        });
+        secondarySelect.addEventListener('change', () => {
+          if (secondarySelect.value && selectedSecondary.length < 3) {
+            selectedSecondary.push(secondarySelect.value);
+          }
+          renderSecondary();
+          update();
+        });
         courseButton.addEventListener('click', () => { void this.generateCourse(index, courseStatus); });
+        renderSecondary();
         update();
-        section.append(title, label, meta, reason, courseButton, courseStatus);
+        section.append(title, label, secondaryLabel, meta, reason, courseButton, courseStatus);
         this.results.append(section);
       });
     }

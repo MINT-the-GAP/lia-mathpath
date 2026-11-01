@@ -74,6 +74,8 @@ export interface LearningTopic {
 export interface LearningRecommendation {
   type: LearningOfferType;
   topic: string | null;
+  /** Optional additional topics; each receives its own task. */
+  secondaryTopics: string[];
   targetLevel: LearningLevel | null;
   taskCount: 4;
   available: boolean;
@@ -86,6 +88,9 @@ export interface LearningReport {
   phase: LearningStateSnapshot['phase'];
   topics: LearningTopic[];
   weaknessTopics: LearningTopic[];
+  /** Selectable secondary topics per offer; deepen includes prior Saxon curriculum topics. */
+  secondaryTopicOptions: Record<LearningOfferType, string[]>;
+  curriculumJurisdiction: string | null;
   recommendations: LearningRecommendation[];
   statusCounts: Record<LearningStatus, number>;
   warnings: string[];

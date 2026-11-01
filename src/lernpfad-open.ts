@@ -1,7 +1,7 @@
 const MAX_DIRECT_COURSE_URL_LENGTH = 32_000;
 const DIRECT_COURSE_ORIGIN = 'https://mint-the-gap.github.io';
 const DIRECT_COURSE_PATH = '/Aufgabensammlung/course.html';
-export const DIRECT_COURSE_RELEASE = '1.0.7';
+export const DIRECT_COURSE_RELEASE = '1.0.8';
 
 export type LearningCourseOpenErrorCode =
   | 'POPUP_BLOCKED'

@@ -51,6 +51,8 @@ export interface SharedGeneratorTask extends SharedCatalogTask {}
 
 export interface SharedGeneratorRequest {
   themes: string[];
+  /** `distributed` means OR filtering plus at least one separate task per theme. */
+  themeMode?: 'all' | 'distributed';
   blockedThemes: string[];
   /** Topics already evidenced by @ADetails in the source course. */
   allowedThemes?: string[];
@@ -79,6 +81,7 @@ export interface SharedLearningPathManifest {
   kind: 'lernpfad';
   offer: 'schwaechen-ueben' | 'weitere-uebungen' | 'vertiefungen';
   topic: string;
+  secondaryTopics?: string[];
   level: 'einsteiger' | 'fortgeschrittene' | 'experten';
   grade?: number;
   schoolType?: SharedSchoolType;
@@ -123,7 +126,7 @@ type RuntimeWindow = Window & typeof globalThis & {
 };
 
 export const SHARED_COURSE_BASE_URL = 'https://mint-the-gap.github.io/Aufgabensammlung/';
-export const SHARED_COURSE_RELEASE = '1.0.7';
+export const SHARED_COURSE_RELEASE = '1.0.8';
 const LOAD_TIMEOUT_MS = 20_000;
 const loads = new WeakMap<Document, Promise<SharedCourseRuntime>>();
 
@@ -153,7 +156,7 @@ function compatibleCatalog(value: unknown): boolean {
   return Boolean(catalog && catalog.schema === 'schullia-course-catalog' &&
     catalog.version === 1 && Array.isArray(catalog.tasks) &&
     catalog.curriculum?.schema === 'schullia-sachsen-curriculum' &&
-    catalog.curriculum.version === 1);
+    catalog.curriculum.version === 1 && catalog.curriculum.jurisdiction === 'DE-SN');
 }
 
 function loadClassicScript(

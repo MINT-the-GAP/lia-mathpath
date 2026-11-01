@@ -32,9 +32,9 @@ test('loads automatically, owns its controls, and updates each offer without qui
     assert.equal(host.shadowRoot.querySelector('button.retry').hidden, true)
     assert.equal(
       host.shadowRoot.querySelector('.intro').textContent,
-      'Hier findest du passende Übungen für deinen nächsten Lernschritt. Wähle ein Thema aus und öffne anschließend einen Kurs mit vier Aufgaben.'
+      'Hier findest du passende Übungen für deinen nächsten Lernschritt. Wähle ein Hauptthema und bei Bedarf Nebenthemen aus und öffne anschließend einen Kurs mit vier Aufgaben.'
     )
-    assert.equal(host.shadowRoot.querySelectorAll('select').length, 3)
+    assert.equal(host.shadowRoot.querySelectorAll('select').length, 6)
     assert.equal(host.shadowRoot.querySelectorAll('button.open-course').length, 3)
     assert.equal(host.shadowRoot.querySelectorAll('button').length, 4)
     assert.equal(host.report.recommendations[1].targetLevel, 'Einsteiger')
@@ -61,6 +61,8 @@ test('renders a compact token-based LiaScript interface with responsive and acce
   try {
     const value = report()
     value.warnings = ['Der Lernstand ist für eine Aufgabe noch nicht verfügbar.']
+    value.secondaryTopicOptions.deepen.push('Grundrechenarten')
+    value.curriculumJurisdiction = 'DE-SN'
     registerLearningPathElement(dom.window.document, async () => value)
     const host = dom.window.document.querySelector('lia-mathpath-lernpfad')
     const root = host.shadowRoot
@@ -85,6 +87,7 @@ test('renders a compact token-based LiaScript interface with responsive and acce
     assert.match(style, /@media\(max-width:42em\)/)
     assert.match(style, /@media\(prefers-reduced-motion:reduce\)/)
     assert.match(style, /@media\(forced-colors:active\)/)
+    assert.match(style, /\.topic-chip\{[\s\S]*background:var\(--_accent-soft\)/)
 
     const summary = root.querySelector('.summary')
     assert.equal(summary.getAttribute('aria-atomic'), 'true')
@@ -106,8 +109,18 @@ test('renders a compact token-based LiaScript interface with responsive and acce
     )
     assert.deepEqual(
       sections.map(section => section.querySelector('select').getAttribute('aria-label')),
-      ['Thema für Grundlagen wiederholen', 'Thema für Weitere Übungen', 'Thema für Vertiefungen']
+      ['Hauptthema für Grundlagen wiederholen', 'Hauptthema für Weitere Übungen', 'Hauptthema für Vertiefungen']
     )
+    assert.deepEqual(
+      sections.map(section => section.querySelectorAll('select')[1].getAttribute('aria-label')),
+      [
+        'Nebenthema für Grundlagen wiederholen hinzufügen',
+        'Nebenthema für Weitere Übungen hinzufügen',
+        'Nebenthema für Vertiefungen hinzufügen'
+      ]
+    )
+    assert.ok([...sections[2].querySelectorAll('select')[1].options]
+      .some(option => option.value === 'Grundrechenarten'))
     assert.deepEqual(
       sections.map(section => section.querySelector('.reason').textContent),
       [
@@ -123,6 +136,7 @@ test('renders a compact token-based LiaScript interface with responsive and acce
       const status = section.querySelector('.course-status')
       const button = section.querySelector('button.open-course')
       assert.equal(section.getAttribute('aria-labelledby'), title.id)
+      assert.equal(section.querySelectorAll('label').length, 2)
       assert.equal(section.querySelector('label').htmlFor, select.id)
       assert.equal(section.querySelectorAll('.meta > .level, .meta > .count').length, 2)
       assert.ok(button.classList.contains('lia-btn'))
@@ -138,6 +152,37 @@ test('renders a compact token-based LiaScript interface with responsive and acce
     const unavailable = deepen.querySelector('button.open-course')
     assert.equal(unavailable.disabled, true)
     assert.equal(unavailable.hasAttribute('aria-disabled'), false)
+  } finally { dom.window.close() }
+})
+
+test('adds multiple secondary topics as removable chips without turning them into an AND filter', async () => {
+  const dom = new JSDOM('<lia-mathpath-lernpfad></lia-mathpath-lernpfad>')
+  try {
+    const value = report()
+    value.secondaryTopicOptions.practice.push('Addition', 'Subtraktion')
+    registerLearningPathElement(dom.window.document, async () => value)
+    const host = dom.window.document.querySelector('lia-mathpath-lernpfad')
+    await tick()
+    const section = host.shadowRoot.querySelector('[data-offer=practice]')
+    const main = section.querySelectorAll('select')[0]
+    const secondary = section.querySelectorAll('select')[1]
+    assert.equal(main.value, 'Algebra')
+    secondary.value = 'Transfer'
+    secondary.dispatchEvent(new dom.window.Event('change'))
+    secondary.value = 'Addition'
+    secondary.dispatchEvent(new dom.window.Event('change'))
+    secondary.value = 'Subtraktion'
+    secondary.dispatchEvent(new dom.window.Event('change'))
+    assert.deepEqual(host.report.recommendations[1].secondaryTopics, ['Transfer', 'Addition', 'Subtraktion'])
+    assert.equal(section.querySelectorAll('.topic-chip').length, 3)
+    assert.match(section.querySelector('.topic-chip').textContent, /Transfer/)
+    assert.equal(secondary.disabled, true)
+    assert.equal(secondary.options[0].textContent, 'Maximal 3 Nebenthemen gewählt')
+    assert.match(section.querySelector('button.open-course').getAttribute('aria-label'), /Algebra, Transfer/)
+    section.querySelector('.topic-chip button').click()
+    assert.deepEqual(host.report.recommendations[1].secondaryTopics, ['Addition', 'Subtraktion'])
+    assert.equal(section.querySelectorAll('.topic-chip').length, 2)
+    assert.equal(secondary.disabled, false)
   } finally { dom.window.close() }
 })
 
@@ -240,7 +285,7 @@ test('Send collection and grading show recommendations but cannot start a course
       })
       const host = dom.window.document.querySelector('lia-mathpath-lernpfad')
       await tick()
-      assert.equal(host.shadowRoot.querySelectorAll('select').length, 3)
+      assert.equal(host.shadowRoot.querySelectorAll('select').length, 6)
       const buttons = [...host.shadowRoot.querySelectorAll('button.open-course')]
       assert.equal(buttons.length, 3)
       assert.ok(buttons.every(button => button.disabled))

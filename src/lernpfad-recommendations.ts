@@ -10,7 +10,7 @@ const key = (value: string): string => value.trim().replace(/\s+/g, ' ').normali
 export function selectLearningRecommendation(
   type: LearningOfferType, topic: LearningTopic | undefined, phase: LearningStateSnapshot['phase']
 ): LearningRecommendation {
-  const base = { type, topic: topic?.topic ?? null, taskCount: 4 as const };
+  const base = { type, topic: topic?.topic ?? null, secondaryTopics: [], taskCount: 4 as const };
   if (type === 'weakness' && (phase === 'collect' || phase === 'grading')) {
     return { ...base, topic: null, targetLevel: 'Einsteiger', available: false,
       reason: 'Deine Empfehlungen zum Wiederholen von Grundlagen werden angezeigt, sobald die Auswertung freigegeben ist.' };
@@ -88,6 +88,12 @@ export function buildLearningReport(course: LearningCourse, snapshot: LearningSt
       b.taskCount - a.taskCount || compare(a.topic, b.topic));
   return { courseUrl: course.url, context: { ...sourceContext, headerTags: [...sourceContext.headerTags] },
     phase: snapshot.phase, topics: ranked, weaknessTopics,
+    secondaryTopicOptions: {
+      weakness: weaknessTopics.map(topic => topic.topic),
+      practice: ranked.map(topic => topic.topic),
+      deepen: ranked.map(topic => topic.topic)
+    },
+    curriculumJurisdiction: null,
     statusCounts, warnings: [...new Set([...course.warnings, ...snapshot.warnings])],
     recommendations: [selectLearningRecommendation('weakness', weaknessTopics[0], snapshot.phase),
       selectLearningRecommendation('practice', ranked[0], snapshot.phase),

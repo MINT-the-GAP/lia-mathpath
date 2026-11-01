@@ -328,13 +328,19 @@ async function run() {
     check('Original recommendation state', initialReport.statusCounts)
 
     const practice = originalHost.locator('section[data-offer=practice]')
-    const topic = practice.locator('select')
+    const topic = practice.locator('.topic-label:not(.secondary-label) select')
     await topic.selectOption({ label: 'Grundrechenarten' })
     await expect(topic).toHaveValue('Grundrechenarten')
     await expect.poll(() => originalHost.evaluate(element =>
       element.report?.recommendations?.find(item => item.type === 'practice')?.topic
     )).toBe('Grundrechenarten')
-    check('Dropdown changes structured recommendation')
+    const secondaryTopic = practice.locator('.secondary-label select')
+    await secondaryTopic.selectOption({ label: 'Addition' })
+    await expect(practice.locator('.topic-chip')).toContainText('Addition')
+    await expect.poll(() => originalHost.evaluate(element =>
+      element.report?.recommendations?.find(item => item.type === 'practice')?.secondaryTopics
+    )).toEqual(['Addition'])
+    check('Main and secondary dropdowns change the structured recommendation')
 
     const popupPromise = context.waitForEvent('page')
     await practice.locator('button.open-course').click()
@@ -350,11 +356,13 @@ async function run() {
     const manifest = JSON.parse(encodedManifest)
     assert.deepEqual(
       {
-        kind: manifest.kind, offer: manifest.offer, topic: manifest.topic, level: manifest.level,
+        kind: manifest.kind, offer: manifest.offer, topic: manifest.topic,
+        secondaryTopics: manifest.secondaryTopics, level: manifest.level,
         grade: manifest.grade, schoolType: manifest.schoolType
       },
       {
         kind: 'lernpfad', offer: 'weitere-uebungen', topic: 'Grundrechenarten',
+        secondaryTopics: ['Addition'],
         level: 'einsteiger', grade: 7, schoolType: 'gymnasium'
       }
     )
@@ -389,12 +397,17 @@ async function run() {
     assert.ok(selectedCatalogTasks.every(task => task.topics.every(topic =>
       allowedTopics.has(topic.trim().replace(/\s+/g, ' ').normalize('NFC').toLocaleLowerCase('de-DE'))
     )))
+    const selectedTopicKeys = new Set(selectedCatalogTasks.flatMap(task => task.topics.map(topic =>
+      topic.trim().replace(/\s+/g, ' ').normalize('NFC').toLocaleLowerCase('de-DE')
+    )))
+    assert.equal(selectedTopicKeys.has('grundrechenarten'), true)
+    assert.equal(selectedTopicKeys.has('addition'), true)
     check('Generated URLs stay inside observed plus earlier curriculum context', {
       evidencedTopics: [...evidencedTopics],
       allowedTopics: [...allowedTopics],
       selected: selectedCatalogTasks.map(task => ({ id: task.id, topics: task.topics }))
     })
-    assert.equal(openingUrl.search, '?v=1.0.7')
+    assert.equal(openingUrl.search, '?v=1.0.8')
     const openCalls = await page.evaluate(() => window.__MATHPATH_OPEN_CALLS__)
     assert.equal(openCalls.length, 1)
     assert.deepEqual(openCalls[0], {
@@ -443,7 +456,7 @@ async function run() {
     const intro = source.body.slice(0, source.body.indexOf('# BROWSER_TASK_'))
     assert.equal(count(intro, /^---$/gm), 8)
     assert.equal(count(source.body,
-      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.21$/gm), 1)
+      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.22$/gm), 1)
     assert.deepEqual(
       source.body.match(/^comment:.*$/gm),
       ['comment: Übe das Thema „Grundrechenarten“ auf deinem bisherigen Niveau weiter und gewinne mehr Sicherheit.']

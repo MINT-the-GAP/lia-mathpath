@@ -157,7 +157,7 @@ async function assertNoIndexedDbPermission(page) {
 async function verifyUi(page, report) {
   const host = page.locator(hostSelector).first()
   await expect(host.locator('section[data-offer]')).toHaveCount(3)
-  await expect(host.locator('select')).toHaveCount(3)
+  await expect(host.locator('select')).toHaveCount(6)
   await expect(host.locator('button.retry')).toBeHidden()
   await expect(host.locator('button.open-course')).toHaveCount(3)
   assert.deepEqual(report.recommendations.map(value => value.taskCount), [4, 4, 4])
@@ -233,7 +233,7 @@ async function verifyUi(page, report) {
   assert.ok(mobile.buttonWidth > mobile.hostWidth / 2 && mobile.buttonWidth < mobile.hostWidth,
     JSON.stringify(mobile))
   await page.setViewportSize({ width: 1360, height: 960 })
-  await host.locator('section[data-offer="deepen"] select').selectOption({ label: 'Transfer' })
+  await host.locator('section[data-offer="deepen"] .topic-label:not(.secondary-label) select').selectOption({ label: 'Transfer' })
   await expect(host.locator('section[data-offer="deepen"] .reason')).toContainText(/höher|höchste|Experte/i)
   assert.equal((await host.evaluate(element => element.report)).recommendations.find(value => value.type === 'deepen').available, false)
 }
@@ -413,7 +413,7 @@ async function runScenario(browser, name) {
           value.topic, value.failedAttemptCount
         ]), [['Bruchrechnung', 12], ['Einheiten', 12], ['Reflexion', 4]])
         assert.deepEqual(await page.locator(hostSelector).first().locator(
-          'section[data-offer=weakness] select option'
+          'section[data-offer=weakness] .topic-label:not(.secondary-label) select option'
         ).allTextContents(), report.weaknessTopics.map(value => value.topic))
         check('All solved tasks stay correct and dropdowns rank twelve before four failures', report)
       }

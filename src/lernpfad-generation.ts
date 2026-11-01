@@ -24,7 +24,11 @@ import type {
 type SharedLearningGroup = SharedGeneratorRequest['group'];
 type SharedLearningOffer = SharedLearningPathManifest['offer'];
 type RevalidatedRecommendation = {
-  recommendation: LearningRecommendation & { topic: string; targetLevel: LearningLevel };
+  recommendation: LearningRecommendation & {
+    topic: string;
+    secondaryTopics: string[];
+    targetLevel: LearningLevel;
+  };
   contextThemes: string[];
   courseContext: LearningCourseContext;
 };
@@ -82,7 +86,7 @@ function checkAbort(signal?: AbortSignal): void {
 
 function validateRequest(request: LearningCourseGenerationRequest): {
   courseUrl: string;
-  recommendation: LearningRecommendation & { topic: string };
+  recommendation: LearningRecommendation & { topic: string; secondaryTopics: string[] };
 } {
   if (!request || typeof request !== 'object') {
     fail('INVALID_REQUEST', 'Die Kursempfehlung fehlt.');
@@ -100,12 +104,25 @@ function validateRequest(request: LearningCourseGenerationRequest): {
   }
   const topic = typeof recommendation.topic === 'string' ? recommendation.topic.trim() : '';
   if (!topic) fail('INVALID_REQUEST', 'Für die Kurserzeugung fehlt ein Thema.');
+  const secondaryInput = recommendation.secondaryTopics === undefined ? [] : recommendation.secondaryTopics;
+  if (!Array.isArray(secondaryInput) || secondaryInput.length > 3) {
+    fail('INVALID_REQUEST', 'Es können höchstens drei Nebenthemen gewählt werden.', { topic });
+  }
+  const secondaryTopics = secondaryInput.map(value =>
+    typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').normalize('NFC') : '');
+  const secondaryKeys = secondaryTopics.map(normalizeTopic);
+  if (secondaryTopics.some(value => !value) || new Set(secondaryKeys).size !== secondaryKeys.length ||
+      secondaryKeys.includes(normalizeTopic(topic))) {
+    fail('INVALID_REQUEST', 'Haupt- und Nebenthemen müssen verschieden und eindeutig sein.', {
+      topic, secondaryTopics
+    });
+  }
   if (recommendation.targetLevel !== null && !LEVELS.has(recommendation.targetLevel)) {
     fail('MISSING_LEVEL', 'Für die Kurserzeugung fehlt ein gültiges Zielniveau.', { topic });
   }
   return {
     courseUrl,
-    recommendation: { ...copy(recommendation), topic }
+    recommendation: { ...copy(recommendation), topic, secondaryTopics }
   };
 }
 
@@ -198,22 +215,36 @@ async function revalidate(
       targetLevel: requested.targetLevel ?? undefined
     });
   }
+  const secondaryOptions = report.secondaryTopicOptions?.[requested.type] ||
+    (requested.type === 'weakness' ? report.weaknessTopics : report.topics).map(entry => entry.topic);
+  const optionKeys = new Set(secondaryOptions.map(normalizeTopic));
+  if (requested.secondaryTopics.some(entry => !optionKeys.has(normalizeTopic(entry)))) {
+    fail('STALE_RECOMMENDATION', 'Die verfügbaren Nebenthemen haben sich geändert. Bitte wähle sie erneut aus.', {
+      topic: requested.topic,
+      secondaryTopics: requested.secondaryTopics,
+      targetLevel: requested.targetLevel ?? undefined
+    });
+  }
   return {
-    recommendation: current as LearningRecommendation & { topic: string; targetLevel: LearningLevel },
+    recommendation: {
+      ...current,
+      secondaryTopics: [...requested.secondaryTopics]
+    } as LearningRecommendation & { topic: string; secondaryTopics: string[]; targetLevel: LearningLevel },
     contextThemes: reportContextThemes(report),
     courseContext: reportCourseContext(report)
   };
 }
 
 function sharedRequest(
-  topic: string,
+  topics: string[],
   group: SharedLearningGroup,
   allowedThemes: string[],
   curriculumThemes: string[],
   seed?: string | number
 ): SharedGeneratorRequest {
   const request: SharedGeneratorRequest = {
-    themes: [topic],
+    themes: [...topics],
+    themeMode: 'distributed',
     blockedThemes: [],
     allowedThemes: [...allowedThemes],
     curriculumThemes: [...curriculumThemes],
@@ -227,7 +258,7 @@ function sharedRequest(
 
 function validateGenerated(
   output: SharedGeneration,
-  requested: LearningRecommendation & { topic: string }
+  requested: LearningRecommendation & { topic: string; secondaryTopics: string[] }
 ): void {
   const tasks = Array.isArray(output?.tasks) ? output.tasks : [];
   const ids = tasks.map(task => String(task?.id || '').trim());
@@ -247,11 +278,24 @@ function validateGenerated(
       targetLevel: requested.targetLevel ?? undefined
     });
   }
+  const selectedTopics = [requested.topic, ...requested.secondaryTopics];
+  const coveredTopics = new Set<string>();
+  tasks.forEach(task => (task.topics || []).forEach(topic => coveredTopics.add(normalizeTopic(topic))));
+  if (selectedTopics.some(topic => !coveredTopics.has(normalizeTopic(topic)))) {
+    fail('INSUFFICIENT_TASKS', 'Nicht jedes gewählte Thema ist in den vier Aufgaben vertreten.', {
+      matchingTaskCount: tasks.length,
+      requiredTaskCount: 4,
+      topic: requested.topic,
+      secondaryTopics: requested.secondaryTopics,
+      targetLevel: requested.targetLevel ?? undefined
+    });
+  }
 }
 
 function learningPathManifest(
   type: LearningOfferType,
   topic: string,
+  secondaryTopics: string[],
   group: SharedLearningGroup,
   context: LearningCourseContext,
   urls: string[]
@@ -259,6 +303,7 @@ function learningPathManifest(
   const manifest: SharedLearningPathManifest = {
     v: 1, kind: 'lernpfad', offer: OFFER_NAMES[type], topic, level: group, urls: [...urls]
   };
+  if (secondaryTopics.length) manifest.secondaryTopics = [...secondaryTopics];
   if (context.grade !== null) manifest.grade = context.grade;
   if (context.schoolType !== null) manifest.schoolType = context.schoolType;
   return manifest;
@@ -301,15 +346,25 @@ export function createLearningCourseGenerator(dependencies: LearningGenerationDe
       const allowedThemes = current.type === 'weakness'
         ? validated.contextThemes
         : uniqueThemes(curriculumContext.allowedThemes);
+      const selectedThemes = [recommendation.topic, ...recommendation.secondaryTopics];
+      const allowedThemeKeys = new Set(allowedThemes.map(normalizeTopic));
+      if (selectedThemes.some(theme => !allowedThemeKeys.has(normalizeTopic(theme)))) {
+        fail('STALE_RECOMMENDATION', 'Mindestens ein gewähltes Thema gehört nicht mehr zum aktuellen Lehrplankontext.', {
+          topic: recommendation.topic,
+          secondaryTopics: recommendation.secondaryTopics,
+          targetLevel: recommendation.targetLevel ?? undefined
+        });
+      }
       const generatorRequest = sharedRequest(
-        recommendation.topic,
+        selectedThemes,
         group,
         allowedThemes,
         uniqueThemes(curriculumContext.curriculumThemes),
         options.seed
       );
       const sourceManifest = learningPathManifest(
-        current.type, recommendation.topic, group, validated.courseContext, []
+        current.type, recommendation.topic, recommendation.secondaryTopics,
+        group, validated.courseContext, []
       );
       const generatorOptions: Record<string, unknown> = {
         assembler: runtime.assembler,
@@ -321,7 +376,8 @@ export function createLearningCourseGenerator(dependencies: LearningGenerationDe
       validateGenerated(output, recommendation);
       const urls = output.tasks.map(task => task.url);
       const manifest = learningPathManifest(
-        current.type, recommendation.topic, group, validated.courseContext, urls
+        current.type, recommendation.topic, recommendation.secondaryTopics,
+        group, validated.courseContext, urls
       );
       openingTarget = runtime.generator.buildDirectCourseUrl(
         new URL('index.html', runtime.baseUrl).href,
@@ -407,6 +463,7 @@ export function createLearningCourseGenerator(dependencies: LearningGenerationDe
       sourceCourseUrl: courseUrl,
       type: current.type,
       topic: recommendation.topic,
+      secondaryTopics: [...recommendation.secondaryTopics],
       targetLevel: current.targetLevel,
       taskCount: 4,
       taskIds: output.tasks.map(task => task.id),

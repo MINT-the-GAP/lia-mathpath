@@ -44,6 +44,12 @@ const report = (changes = {}) => {
     phase: 'live',
     topics: [algebra],
     weaknessTopics: [algebra],
+    secondaryTopicOptions: {
+      weakness: ['Algebra'],
+      practice: ['Algebra'],
+      deepen: ['Algebra', 'Grundrechenarten']
+    },
+    curriculumJurisdiction: 'DE-SN',
     recommendations: [],
     statusCounts: { correct: 1, wrong: 1, partial: 0, unanswered: 1, unavailable: 0 },
     warnings: [],
@@ -54,6 +60,7 @@ const report = (changes = {}) => {
 const recommendation = (type, targetLevel, name = 'Algebra', changes = {}) => ({
   type,
   topic: name,
+  secondaryTopics: [],
   targetLevel,
   taskCount: 4,
   available: true,
@@ -61,12 +68,15 @@ const recommendation = (type, targetLevel, name = 'Algebra', changes = {}) => ({
   ...changes
 })
 
-const sharedOutput = (markdown = '<!--\nlernpfad-level: Einsteiger\n-->\n# Kurs') => ({
+const sharedOutput = (
+  markdown = '<!--\nlernpfad-level: Einsteiger\n-->\n# Kurs',
+  topics = ['Algebra']
+) => ({
   tasks: Array.from({ length: 4 }, (_, index) => ({
     id: `task-${index + 1}`,
     url: `https://example.test/task-${index + 1}.md`,
     title: `Task ${index + 1}`,
-    tags: ['Algebra'], topics: ['Algebra'], difficulty: index + 1, network: null, operator: null
+    tags: [...topics], topics: [topics[index % topics.length]], difficulty: index + 1, network: null, operator: null
   })),
   documents: [],
   source: markdown
@@ -83,7 +93,7 @@ const catalogTask = (id, topics) => ({
   operator: 'berechnen'
 })
 
-function harness(initialReport = report(), generateImpl = async () => sharedOutput()) {
+function harness(initialReport = report(), generateImpl = async request => sharedOutput(undefined, request.themes)) {
   let currentUrl = courseUrl
   let currentReport = initialReport
   let reads = 0
@@ -172,7 +182,7 @@ test('maps all three offers to the one shared strict-count policy and revalidate
       ? ['Algebra']
       : ['Algebra', 'Grundrechenarten']
     assert.deepEqual(h.calls[0], {
-      themes: ['Algebra'], blockedThemes: [],
+      themes: ['Algebra'], themeMode: 'distributed', blockedThemes: [],
       allowedThemes: expectedAllowed,
       curriculumThemes: ['Algebra', 'Grundrechenarten', 'Negative Zahlen'],
       count: 4, group, strictCount: true, seed: 'fixed'
@@ -181,8 +191,46 @@ test('maps all three offers to the one shared strict-count policy and revalidate
     assert.equal(h.directManifests[0].level, group)
     assert.equal(result.type, type)
     assert.equal(result.targetLevel, level)
+    assert.deepEqual(result.secondaryTopics, [])
     assert.deepEqual(result.taskIds, ['task-1', 'task-2', 'task-3', 'task-4'])
   }
+})
+
+test('distributes main and secondary topics and records them in the direct course', async () => {
+  const addition = topic('Addition')
+  const subtraction = topic('Subtraktion')
+  const current = report({
+    topics: [addition, subtraction],
+    weaknessTopics: [addition, subtraction],
+    secondaryTopicOptions: {
+      weakness: ['Addition', 'Subtraktion'],
+      practice: ['Addition', 'Subtraktion'],
+      deepen: ['Addition', 'Subtraktion', 'Grundrechenarten']
+    }
+  })
+  const h = harness(current)
+  const result = await h.generate({
+    courseUrl,
+    recommendation: recommendation('practice', 'Fortgeschritten', 'Addition', {
+      secondaryTopics: ['Subtraktion']
+    })
+  }, { seed: 'two-topics' })
+  assert.deepEqual(h.calls[0].themes, ['Addition', 'Subtraktion'])
+  assert.equal(h.calls[0].themeMode, 'distributed')
+  assert.deepEqual(h.sourceManifests[0].secondaryTopics, ['Subtraktion'])
+  assert.deepEqual(h.directManifests[0].secondaryTopics, ['Subtraktion'])
+  assert.deepEqual(result.secondaryTopics, ['Subtraktion'])
+
+  const deepen = harness(current)
+  const deepened = await deepen.generate({
+    courseUrl,
+    recommendation: recommendation('deepen', 'Experte', 'Addition', {
+      secondaryTopics: ['Grundrechenarten']
+    })
+  })
+  assert.deepEqual(deepen.calls[0].themes, ['Addition', 'Grundrechenarten'])
+  assert.deepEqual(deepen.calls[0].allowedThemes, ['Addition', 'Grundrechenarten', 'Subtraktion'])
+  assert.deepEqual(deepened.secondaryTopics, ['Grundrechenarten'])
 })
 
 test('uses complete normalized tags while preserving the selected topic text', async () => {
@@ -355,6 +403,16 @@ test('honors aborts and validates the fixed structured request before I/O', asyn
     h.generate({ courseUrl, recommendation: recommendation('practice', 'Fortgeschritten', 'Algebra', { taskCount: 3 }) }),
     error => error instanceof LearningGenerationError && error.code === 'INVALID_REQUEST'
   )
+  for (const secondaryTopics of [
+    ['Algebra'],
+    ['Addition', 'addition'],
+    ['A', 'B', 'C', 'D']
+  ]) {
+    await assert.rejects(
+      h.generate({ courseUrl, recommendation: recommendation('practice', 'Fortgeschritten', 'Algebra', { secondaryTopics }) }),
+      error => error instanceof LearningGenerationError && error.code === 'INVALID_REQUEST'
+    )
+  }
   assert.equal(h.calls.length, 0)
 })
 

@@ -23,6 +23,7 @@ export interface GeneratedLearningCourse {
   sourceCourseUrl: string;
   type: LearningOfferType;
   topic: string;
+  secondaryTopics: string[];
   targetLevel: LearningLevel;
   taskCount: 4;
   taskIds: string[];
@@ -54,6 +55,7 @@ export interface LearningGenerationErrorDetails {
   matchingTaskCount?: number;
   requiredTaskCount?: 4;
   topic?: string;
+  secondaryTopics?: string[];
   targetLevel?: LearningLevel;
   causeCode?: string;
 }
