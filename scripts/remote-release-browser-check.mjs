@@ -105,6 +105,7 @@ function releaseCourseSource() {
     'version: 1.0.0',
     'language: de',
     'mode: Presentation',
+    'tags: Mathematik, Klasse 7, Gymnasium',
     'lernpfad-level: Einsteiger',
     `import: ${readmeUrl}`,
     '@canvas: <span data-remote-release-canvas="1"></span>',
@@ -339,10 +340,19 @@ async function run() {
     const generatedPage = await popupPromise
     generatedPage.setDefaultTimeout(timeout)
     generatedPage.on('pageerror', error => report.pageErrors.push(String(error)))
-    await generatedPage.waitForURL(url =>
-      url.origin === 'https://liascript.github.io' &&
-      url.pathname === '/course/' &&
-      url.search.startsWith(`?${dataCoursePrefix}`), { timeout })
+    try {
+      await generatedPage.waitForURL(url =>
+        url.origin === 'https://liascript.github.io' &&
+        url.pathname === '/course/' &&
+        url.search.startsWith(`?${dataCoursePrefix}`), { timeout })
+    } catch (error) {
+      const generatorStatus = await practice.locator('.course-status')
+        .textContent().catch(() => '')
+      throw new Error(
+        `Generated course window closed before navigation. ${generatorStatus?.trim() || 'No generator status.'}`,
+        { cause: error }
+      )
+    }
     assert.equal(await generatedPage.evaluate(() => window.opener === null), true)
     await generatedPage.waitForFunction(() =>
       typeof window.__LIA_MATHPATH__?.getLearningRecommendations === 'function' &&
