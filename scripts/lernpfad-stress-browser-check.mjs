@@ -264,12 +264,8 @@ async function navigate(page, slide) {
 }
 
 async function recommend(host) {
-  const button = host.getByRole('button', {
-    name: /Empfehlungen.*Lernpfad/i
-  })
-  await expect(button).toBeVisible()
-  await button.click()
   await expect(host.locator('section[data-offer]')).toHaveCount(3)
+  await expect.poll(() => host.evaluate(element => element.report)).not.toBe(null)
   const report = await host.evaluate(element => element.report)
   assert.ok(report && Array.isArray(report.recommendations))
   return report
@@ -344,7 +340,7 @@ async function stressPublicApi(page, host, perOffer) {
     assert.doesNotMatch(course.markdown,
       /lia-freeze|FreezeREADME|@Abgabe|@Auswertung/i)
     assert.equal(count(course.markdown,
-      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.20$/gm), 1)
+      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.21$/gm), 1)
     assert.deepEqual(
       course.markdown.match(/^comment:.*$/gm),
       ['comment: ' + expected.comment]
@@ -382,7 +378,7 @@ async function inspectOpenedCourse(popup) {
   assert.doesNotMatch(source.body,
     /lia-freeze|FreezeREADME|@Abgabe|@Auswertung/i)
   assert.equal(count(source.body,
-    /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.20$/gm), 1)
+    /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.21$/gm), 1)
   assert.equal(count(source.body, /^@Lernpfad$/gm), 1)
   assert.equal(count(source.body, /^# STRESS_TASK_\d+$/gm), 4)
   assert.equal(count(source.body, /^mode:\s*Presentation$/gm), 1)

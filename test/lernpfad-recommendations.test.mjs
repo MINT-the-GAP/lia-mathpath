@@ -4,7 +4,9 @@ import { buildLearningReport, selectLearningRecommendation } from '../src/lernpf
 
 const task = (id, tags, level = 'Einsteiger', points = 1) => ({ id, tags, level, points })
 const course = tasks => ({ url: 'https://example.test/course.md', version: '1.0.0', tasks, warnings: [], sendMode: false })
-const snapshot = (states = [], phase = 'live') => ({ states: states.map(([taskId, status]) => ({ taskId, status, reason: '', source: 'test' })), warnings: [], phase })
+const snapshot = (states = [], phase = 'live') => ({ states: states.map(([taskId, status, failedAttempts]) => ({
+  taskId, status, failedAttempts, reason: '', source: 'test'
+})), warnings: [], phase })
 
 test('ranks current weaknesses once per task/topic, retaining partial and unknown distinctions', () => {
   const tasks = [task('a', ['Algebra', 'Algebra', 'Geometrie']), task('b', ['Algebra']),
@@ -26,6 +28,27 @@ test('new snapshot replaces previous failure or reset state without cumulative c
   assert.equal(buildLearningReport(c, snapshot([['a', 'unanswered']])).weaknessTopics[0].weaknessCount, 1)
 })
 
+test('ranks all solved topics by persisted failed attempts before unanswered work', () => {
+  const report = buildLearningReport(course([
+    task('a', ['Zwölf Fehler']), task('b', ['Vier Fehler']), task('c', ['Unbearbeitet'])
+  ]), snapshot([
+    ['a', 'correct', 12], ['b', 'correct', 4], ['c', 'unanswered', 0]
+  ]))
+  assert.deepEqual(report.statusCounts,
+    { correct: 2, wrong: 0, partial: 0, unanswered: 1, unavailable: 0 })
+  assert.deepEqual(report.weaknessTopics.map(topic => ({
+    topic: topic.topic,
+    failedAttemptCount: topic.failedAttemptCount,
+    unansweredCount: topic.unansweredCount,
+    weaknessScore: topic.weaknessScore
+  })), [
+    { topic: 'Zwölf Fehler', failedAttemptCount: 12, unansweredCount: 0, weaknessScore: 12 },
+    { topic: 'Vier Fehler', failedAttemptCount: 4, unansweredCount: 0, weaknessScore: 4 },
+    { topic: 'Unbearbeitet', failedAttemptCount: 0, unansweredCount: 1, weaknessScore: 1 }
+  ])
+  assert.equal(report.recommendations[0].topic, 'Zwölf Fehler')
+})
+
 test('mixed level mode resolves ties downwards; unknown levels are not fabricated', () => {
   const report = buildLearningReport(course([task('a', ['A'], 'Experte'), task('b', ['A'], 'Fortgeschritten'),
     task('c', ['A'], null), task('d', ['B'], null)]), snapshot())
@@ -40,6 +63,7 @@ test('mixed level mode resolves ties downwards; unknown levels are not fabricate
 test('describes the three offers in learner-facing language for the selected topic', () => {
   const topic = {
     topic: 'Bruchrechnung', taskCount: 8, weaknessCount: 5, partialCount: 1,
+    failedAttemptCount: 7, unansweredCount: 0, weaknessScore: 7,
     unavailableCount: 0, level: 'Einsteiger', levelReason: 'Technische Auswertung'
   }
   assert.equal(

@@ -41,6 +41,8 @@ export interface LearningTaskState {
   status: LearningStatus;
   source: string;
   reason: string;
+  /** Persisted failed checks before the current/final result. */
+  failedAttempts?: number;
   earnedPoints?: number;
   maximumPoints?: number;
 }
@@ -55,7 +57,14 @@ export type LearningOfferType = 'weakness' | 'practice' | 'deepen';
 export interface LearningTopic {
   topic: string;
   taskCount: number;
+  /** Number of tasks with failed checks or a current learning need. */
   weaknessCount: number;
+  /** Sum of persisted failed checks for this topic. */
+  failedAttemptCount: number;
+  /** Unanswered tasks; each contributes one point to weaknessScore. */
+  unansweredCount: number;
+  /** Failed attempts plus one point for every otherwise uncounted learning need. */
+  weaknessScore: number;
   partialCount: number;
   unavailableCount: number;
   level: LearningLevel | null;

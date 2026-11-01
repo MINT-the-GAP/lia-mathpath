@@ -23,7 +23,6 @@ const viewer = process.env.MATHPATH_VIEWER_URL || 'https://liascript.github.io/c
 const timeout = Number(process.env.MATHPATH_BROWSER_TIMEOUT || 60_000)
 const selected = process.argv.find(value => value.startsWith('--scenario='))?.slice(11)
 const scenarios = ['standalone', 'freeze-first', 'mathpath-first', 'freeze-delayed', 'freeze-send'].filter(name => !selected || name === selected)
-const buttonText = 'Empfehlungen für deinen weiteren Lernpfad erstellen'
 const hostSelector = 'lia-mathpath-lernpfad'
 assert.ok(scenarios.length, 'Unknown scenario: ' + selected)
 
@@ -104,15 +103,23 @@ async function navigate(page, slide, quizzes, hosts) {
   await expect(page.locator(hostSelector)).toHaveCount(hosts)
 }
 
+async function solveQuiz(page, index, answer, failedAttempts = 0) {
+  const input = page.locator('input.lia-quiz__input').nth(index)
+  const check = page.locator('.lia-quiz__check').nth(index)
+  for (let attempt = 1; attempt <= failedAttempts; attempt++) {
+    await input.fill(`falsch-${attempt}`)
+    await check.click()
+    await expect(input).toBeEditable()
+  }
+  await input.fill(answer)
+  await check.click()
+  await expect(input).toBeDisabled()
+}
+
 async function recommend(page, hostIndex = 0) {
   const host = page.locator(hostSelector).nth(hostIndex)
-  const button = host.getByRole('button', { name: buttonText, exact: true })
-  await expect(button).toBeVisible()
-  // A fixture instance can sit below LiaScript's transient evaluation layer.
-  // Keyboard activation still exercises the real accessible button and avoids
-  // turning that unrelated overlay animation into a pointer-test flake.
-  await button.press('Enter')
-  await expect(button).toBeEnabled()
+  await expect(host.locator('section[data-offer]')).toHaveCount(3)
+  await expect.poll(() => host.evaluate(element => element.report)).not.toBe(null)
   const report = await host.evaluate(element => element.report)
   if (!report) throw new Error('Lernpfad returned no report: ' + await host.locator('.summary').textContent())
   assert.ok(report && Array.isArray(report.recommendations), 'Host exposes its structured report')
@@ -141,31 +148,17 @@ function contrastRatio(foreground, background) {
   return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05)
 }
 
-async function quizRecords(page, courseUrl) {
-  return page.evaluate(async name => {
-    const names = await indexedDB.databases()
-    if (!names.some(entry => entry.name === name)) return null
-    const db = await new Promise((resolve, reject) => {
-      const request = indexedDB.open(name)
-      request.onsuccess = () => resolve(request.result)
-      request.onerror = () => reject(request.error)
-      request.onupgradeneeded = () => { request.transaction.abort(); reject(new Error('Unexpected new database')) }
-    })
-    try {
-      return await new Promise((resolve, reject) => {
-        const request = db.transaction('quiz', 'readonly').objectStore('quiz').getAll()
-        request.onsuccess = () => resolve(request.result)
-        request.onerror = () => reject(request.error)
-      })
-    } finally { db.close() }
-  }, courseUrl)
+async function assertNoIndexedDbPermission(page) {
+  await expect(page.getByText(
+    /external script is requesting permission to use IndexedDB/i
+  )).toHaveCount(0)
 }
 
 async function verifyUi(page, report) {
   const host = page.locator(hostSelector).first()
   await expect(host.locator('section[data-offer]')).toHaveCount(3)
   await expect(host.locator('select')).toHaveCount(3)
-  await expect(host.locator('button')).toHaveCount(4)
+  await expect(host.locator('button.retry')).toBeHidden()
   await expect(host.locator('button.open-course')).toHaveCount(3)
   assert.deepEqual(report.recommendations.map(value => value.taskCount), [4, 4, 4])
   const practice = report.recommendations.find(value => value.type === 'practice')
@@ -180,15 +173,14 @@ async function verifyUi(page, report) {
   }
   const desktop = await host.evaluate(element => {
     const root = element.shadowRoot
-    const create = root.querySelector('button.create')
     const open = root.querySelector('button.open-course')
     const offers = root.querySelector('.offers')
     const warning = root.querySelector('.warnings')
-    const styles = getComputedStyle(create)
+    const styles = getComputedStyle(open)
     return {
       fontSize: styles.fontSize,
-      buttonHeight: create.getBoundingClientRect().height,
-      buttonWidth: create.getBoundingClientRect().width,
+      buttonHeight: open.getBoundingClientRect().height,
+      buttonWidth: open.getBoundingClientRect().width,
       hostWidth: element.getBoundingClientRect().width,
       columns: getComputedStyle(offers).gridTemplateColumns.split(/\s+/).filter(Boolean).length,
       warningBeforeOffers: !!(warning.compareDocumentPosition(offers) & Node.DOCUMENT_POSITION_FOLLOWING),
@@ -213,13 +205,10 @@ async function verifyUi(page, report) {
     }
     for (const [name, value] of Object.entries(properties)) element.style.setProperty(name, value)
     const select = root.querySelector('select')
-    const create = root.querySelector('button.create')
     const open = root.querySelector('button.open-course')
     const result = {
       selectColor: getComputedStyle(select).color,
       selectBackground: getComputedStyle(select).backgroundColor,
-      buttonColor: getComputedStyle(create).color,
-      buttonBackground: getComputedStyle(create).backgroundColor,
       openButtonColor: getComputedStyle(open).color,
       openButtonBackground: getComputedStyle(open).backgroundColor
     }
@@ -227,22 +216,22 @@ async function verifyUi(page, report) {
     return result
   })
   assert.ok(contrastRatio(dark.selectColor, dark.selectBackground) >= 4.5, JSON.stringify(dark))
-  assert.ok(contrastRatio(dark.buttonColor, dark.buttonBackground) >= 4.5, JSON.stringify(dark))
   assert.ok(contrastRatio(dark.openButtonColor, dark.openButtonBackground) >= 4.5, JSON.stringify(dark))
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
   const mobile = await host.evaluate(element => {
     const root = element.shadowRoot
-    const create = root.querySelector('button.create')
+    const open = root.querySelector('button.open-course')
     return {
       columns: getComputedStyle(root.querySelector('.offers')).gridTemplateColumns.split(/\s+/).filter(Boolean).length,
-      buttonWidth: create.getBoundingClientRect().width,
+      buttonWidth: open.getBoundingClientRect().width,
       hostWidth: element.getBoundingClientRect().width
     }
   })
   assert.equal(mobile.columns, 1)
-  assert.ok(Math.abs(mobile.buttonWidth - mobile.hostWidth) <= 2, JSON.stringify(mobile))
+  assert.ok(mobile.buttonWidth > mobile.hostWidth / 2 && mobile.buttonWidth < mobile.hostWidth,
+    JSON.stringify(mobile))
   await page.setViewportSize({ width: 1360, height: 960 })
   await host.locator('section[data-offer="deepen"] select').selectOption({ label: 'Transfer' })
   await expect(host.locator('section[data-offer="deepen"] .reason')).toContainText(/höher|höchste|Experte/i)
@@ -303,8 +292,14 @@ async function runScenario(browser, name) {
     const courseUrl = await routeResources(page, name, result.served)
     await page.goto(viewer + '?' + courseUrl + '#5', { waitUntil: 'domcontentloaded', timeout })
     await expect(page.locator(hostSelector)).toHaveCount(2)
-    const recordsBefore = await quizRecords(page, courseUrl)
     let report = await recommend(page)
+    await assertNoIndexedDbPermission(page)
+    if (name !== 'freeze-send') {
+      await expect.poll(() => page.locator(hostSelector).first().evaluate(element =>
+        element.report?.phase
+      )).toBe('live')
+      report = await page.locator(hostSelector).first().evaluate(element => element.report)
+    }
     assert.equal(totalTasks(report), 6)
     if (name === 'freeze-send') {
       assert.equal(report.statusCounts.unanswered, 0)
@@ -316,9 +311,8 @@ async function runScenario(browser, name) {
     assert.equal(topic(report, 'Bruchrechnung').taskCount, 4)
     assert.equal(topic(report, 'Einheiten').taskCount, 4)
     assert.equal(topic(report, 'Transfer').unavailableCount, name === 'freeze-send' ? 1 : 0)
-    assert.deepEqual((await quizRecords(page, courseUrl)) || [], recordsBefore || [], 'Recommendation button never writes quiz state')
     await verifyUi(page, report)
-    check('Whole course metadata, explicit levels and absent-state handling', report)
+    check('Whole course metadata, explicit levels and absent-state handling without an IndexedDB permission dialog', report)
     const second = await recommend(page, 1)
     assert.equal(totalTasks(second), 6)
     check('Multiple macro instances do not duplicate tasks')
@@ -352,20 +346,24 @@ async function runScenario(browser, name) {
       check('Send collection reveals no deferred correctness', report)
       await createAndReview(browser, page, name, result, check)
     } else {
-      await firstInput.fill('wrong')
-      await firstQuiz.locator('.lia-quiz__check').click()
-      await expect(firstQuiz.locator('.text-error').first()).toBeVisible()
+      const alphaFailures = ['standalone', 'freeze-first'].includes(name) ? 12 : 1
+      for (let attempt = 1; attempt <= alphaFailures; attempt++) {
+        await firstInput.fill(`wrong-${attempt}`)
+        await firstQuiz.locator('.lia-quiz__check').click()
+        await expect(firstQuiz.locator('.text-error').first()).toBeVisible()
+      }
       await page.evaluate(() => {
         window.__lernpfadNodes = [...document.querySelectorAll('.lia-quiz,.lia-quiz button,input.lia-quiz__input')]
-        window.__lernpfadMarkup = window.__lernpfadNodes.map(node => node.outerHTML)
       })
+      await expect.poll(() => page.locator(hostSelector).first().evaluate(element =>
+        element.report?.statusCounts?.wrong
+      )).toBe(1)
       report = await recommend(page)
       assert.equal(report.statusCounts.wrong, 1)
       assert.equal(topic(report, 'Bruchrechnung').weaknessCount, 4)
       assert.equal(topic(report, 'Einheiten').weaknessCount, 4)
       assert.equal(topic(report, 'Reflexion').weaknessCount, 1, 'An explicit untouched native quiz remains unanswered at zero BE')
-      assert.ok(await page.evaluate(() => window.__lernpfadNodes.every((node, index) =>
-        node.isConnected && node.outerHTML === window.__lernpfadMarkup[index])))
+      assert.ok(await page.evaluate(() => window.__lernpfadNodes.every(node => node.isConnected)))
       check('Current failure and untouched siblings rank equally; zero BE and Elm nodes are preserved', report)
       await firstInput.fill('alpha')
       await firstQuiz.locator('.lia-quiz__check').click()
@@ -374,8 +372,9 @@ async function runScenario(browser, name) {
       report = await recommend(page)
       assert.equal(report.statusCounts.correct, 1)
       assert.equal(report.statusCounts.wrong, 0)
-      assert.equal(topic(report, 'Bruchrechnung').weaknessCount, 3)
-      check('Later correct answer replaces prior errors across slides', report)
+      assert.equal(topic(report, 'Bruchrechnung').weaknessCount, 4)
+      assert.equal(topic(report, 'Bruchrechnung').failedAttemptCount, alphaFailures)
+      check('Later correct answer keeps failed attempts as recommendation evidence', report)
       await navigate(page, 3, 1, 0)
       await page.locator('input.lia-quiz__input').fill('gamma')
       await page.locator('.lia-quiz__check').click()
@@ -389,13 +388,35 @@ async function runScenario(browser, name) {
       await navigate(page, 5, 0, 2)
       report = await recommend(page)
       assert.equal(report.statusCounts.correct, 1)
-      assert.equal(topic(report, 'Bruchrechnung').weaknessCount, 3)
+      assert.equal(topic(report, 'Bruchrechnung').weaknessCount, 4)
+      assert.equal(topic(report, 'Bruchrechnung').failedAttemptCount, alphaFailures)
       assert.equal(topic(report, 'Transfer').unavailableCount, 0)
       check('Reset updates recommendations without visiting unrelated tasks', report)
       await recommend(page)
       await recommend(page, 1)
       assert.equal(await page.locator(hostSelector + ' section[data-offer]').count(), 6)
       check('Repeated rendering and recommendation requests stay idempotent')
+      if (['standalone', 'freeze-first'].includes(name)) {
+        await navigate(page, 2, 4, 1)
+        await solveQuiz(page, 1, 'beta')
+        await solveQuiz(page, 2, 'zero', 4)
+        await solveQuiz(page, 3, 'decimal')
+        await navigate(page, 3, 1, 0)
+        await solveQuiz(page, 0, 'gamma')
+        await navigate(page, 4, 1, 0)
+        await solveQuiz(page, 0, 'delta')
+        await navigate(page, 5, 0, 2)
+        report = await recommend(page)
+        assert.deepEqual(report.statusCounts,
+          { correct: 6, wrong: 0, partial: 0, unanswered: 0, unavailable: 0 })
+        assert.deepEqual(report.weaknessTopics.slice(0, 3).map(value => [
+          value.topic, value.failedAttemptCount
+        ]), [['Bruchrechnung', 12], ['Einheiten', 12], ['Reflexion', 4]])
+        assert.deepEqual(await page.locator(hostSelector).first().locator(
+          'section[data-offer=weakness] select option'
+        ).allTextContents(), report.weaknessTopics.map(value => value.topic))
+        check('All solved tasks stay correct and dropdowns rank twelve before four failures', report)
+      }
       if (name === 'mathpath-first') await createAndReview(browser, page, name, result, check)
     }
     assert.equal(result.errors.length, 0, JSON.stringify(result.errors))

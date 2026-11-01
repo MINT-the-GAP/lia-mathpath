@@ -162,12 +162,12 @@ async function revalidate(
 ): Promise<RevalidatedRecommendation> {
   checkAbort(signal);
   if (dependencies.getCurrentCourseUrl() !== courseUrl) {
-    fail('COURSE_CHANGED', 'Der Ausgangskurs wurde inzwischen gewechselt. Bitte Empfehlungen neu erstellen.');
+    fail('COURSE_CHANGED', 'Der Ausgangskurs wurde inzwischen gewechselt. Bitte öffne die Lernpfad-Folie erneut.');
   }
   const report = await dependencies.getRecommendations();
   checkAbort(signal);
   if (dependencies.getCurrentCourseUrl() !== courseUrl || report.courseUrl !== courseUrl) {
-    fail('COURSE_CHANGED', 'Der Ausgangskurs wurde inzwischen gewechselt. Bitte Empfehlungen neu erstellen.');
+    fail('COURSE_CHANGED', 'Der Ausgangskurs wurde inzwischen gewechselt. Bitte öffne die Lernpfad-Folie erneut.');
   }
   const topic = topicFor(report, requested.type, requested.topic);
   const current = selectLearningRecommendation(requested.type, topic, report.phase);
@@ -193,7 +193,7 @@ async function revalidate(
     current.targetLevel !== requested.targetLevel ||
     current.taskCount !== 4
   ) {
-    fail('STALE_RECOMMENDATION', 'Thema oder Zielniveau haben sich geändert. Bitte Empfehlungen neu erstellen.', {
+    fail('STALE_RECOMMENDATION', 'Thema oder Zielniveau haben sich geändert. Bitte versuche es erneut.', {
       topic: requested.topic,
       targetLevel: requested.targetLevel ?? undefined
     });
@@ -398,7 +398,7 @@ export function createLearningCourseGenerator(dependencies: LearningGenerationDe
     const refreshed = await revalidate(dependencies, courseUrl, recommendation, options.signal);
     if (!sameThemeContext(validated.contextThemes, refreshed.contextThemes) ||
         !sameCourseContext(validated.courseContext, refreshed.courseContext)) {
-      fail('STALE_RECOMMENDATION', 'Der belegte Lernkontext hat sich geändert. Bitte Empfehlungen neu erstellen.', {
+      fail('STALE_RECOMMENDATION', 'Der belegte Lernkontext hat sich geändert. Bitte öffne die Lernpfad-Folie erneut.', {
         topic: recommendation.topic,
         targetLevel: recommendation.targetLevel ?? undefined
       });

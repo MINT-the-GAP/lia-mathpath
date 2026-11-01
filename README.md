@@ -1,10 +1,10 @@
 <!--
 author:   MINT-the-GAP; Martin Lommatzsch
-version:  0.0.20
+version:  0.0.21
 language: de
 edit:     true
 comment:  LiaScript plugin for reusable math path components.
-script:   ./dist/index.v0x0x20.js
+script:   ./dist/index.v0x0x21.js
 
 
 @Explain: <lia-mathpath-explain data-lia-explain-topic="@0"></lia-mathpath-explain>
@@ -44,20 +44,20 @@ Dieses Repository bildet die technische Basis für den schrittweisen Aufbau von 
 
 
 ``` markdown
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.20
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.21
 ```
 
 
 Der Fokus der ersten Ausbaustufe liegt auf einer stabilen Repo-Struktur (TypeScript Quellcode,
 Parcel Build nach `dist/index.js`, importierbare LiaScript README). Der Build erzeugt zusätzlich
-das byteidentische Release-Bundle `dist/index.v0x0x20.js`, das diese README ohne Query-Parameter
+das byteidentische Release-Bundle `dist/index.v0x0x21.js`, das diese README ohne Query-Parameter
 lädt. Der versionsgebundene Dateiname verhindert, dass ein bereits zwischengespeichertes Bundle
 nach einem Release weiterverwendet wird; `dist/index.js` bleibt für Entwicklung und bestehende
 direkte Einbindungen erhalten.
 
 
 __Try it on LiaScript:__
-https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.20
+https://liascript.github.io/course/?https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.21
 
 
 **Live-Test: manuell und außerhalb eines Hints**
@@ -70,7 +70,7 @@ Für ein manuell gesetztes Explain-Thema muss MathPath direkt im einzigen
 LiaScript-Hauptkopf des verwendenden Kurses importiert werden:
 
 ```markdown
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.20
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.21
 ```
 
 Auch das automatische Thema aus `@ADetails` funktioniert mit MathPath allein.
@@ -80,7 +80,7 @@ Template-Imports sollte man sich nicht verlassen.
 
 ```markdown
 import: https://raw.githubusercontent.com/MINT-the-GAP/lia-freeze-v2/main/README.md
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.20
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.21
 ```
 
 Nach dem MathPath-Import stehen `@ADetails`, `@Explain` und `@tooltip` zur Verfügung.
@@ -194,7 +194,7 @@ Bruchrechnung: [[  Test  ]]
 Ab MathPath **0.0.10** genügt dieser direkte Import im Kurskopf:
 
 ```markdown
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.20
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.21
 ```
 
 `@ADetails` steht mit einer Leerzeile nach dem zugehörigen Quiz. MathPath zeigt
@@ -242,7 +242,7 @@ gemeinsamen `@ADetails`-Definition voraus. Beide aktualisierten Vorlagen müssen
 veröffentlicht beziehungsweise im lokalen Test gemeinsam verwendet werden.
 
 ```markdown
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.20
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.21
 import: https://raw.githubusercontent.com/MINT-the-GAP/lia-freeze-v2/main/README.md
 ```
 
@@ -300,10 +300,13 @@ Unterstützung verändert die Send-Erfassung oder Wiederherstellung nicht.
 
 # Makro `@Lernpfad`
 
-Seit **MathPath 0.0.11** zeigt `@Lernpfad` den Button
-„Empfehlungen für deinen weiteren Lernpfad erstellen“. Jeder Klick liest den
-aktuellen Lernstand und ersetzt die drei Empfehlungen. Pro Angebot gibt es ein
-Themen-Dropdown; Niveau und Umfang von jeweils **vier Aufgaben** sind festgelegt.
+Seit **MathPath 0.0.21** liest `@Lernpfad` den aktuellen Lernstand beim Öffnen
+automatisch und zeigt die drei Empfehlungen ohne vorgeschalteten Button an.
+Nach einer Quizprüfung oder einem Reset auf derselben Folie wird die Anzeige
+automatisch aktualisiert; beim erneuten Öffnen der Folie wird der Stand ebenfalls
+frisch gelesen. Nur nach einem Ladefehler erscheint ein Wiederholen-Button. Pro
+Angebot gibt es ein Themen-Dropdown; Niveau und Umfang von jeweils **vier
+Aufgaben** sind festgelegt.
 Ab **MathPath 0.0.12** besitzt jedes Angebot zusätzlich genau den Button
 „Kurs mit 4 Aufgaben öffnen“. Er verwendet das aktuell gewählte Thema und das
 angezeigte Niveau, öffnet eine normale LiaScript-Kursansicht in einem neuen
@@ -327,12 +330,12 @@ version: 1.0.0
 language: de
 mode: Presentation
 lernpfad-level: Einsteiger
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.20
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/master/README.md?v=0.0.21
 -->
 
 # Mein Lernpfad
 
-Bearbeite die Aufgaben und erstelle anschließend deine Empfehlungen.
+Bearbeite die Aufgaben. Deine Empfehlungen werden automatisch angezeigt.
 
 1. Bruchrechnung
 
@@ -364,29 +367,36 @@ import: https://raw.githubusercontent.com/MINT-the-GAP/lia-freeze-v2/main/README
 ```
 
 Beide Importreihenfolgen und verzögerte Initialisierung werden unterstützt.
+Für die Live-Erkennung von Aufgaben anderer Folien einschließlich Versuchszahl
+und Reset wird **lia-freeze-v2 ab 1.0.3** empfohlen; mit älteren Versionen fällt
+MathPath auf seinen eigenen sitzungsgebundenen DOM-Tracker zurück.
 Für `@ADetails` allein bleibt die bereits dokumentierte Grenze 1.0.1 bestehen.
 MathPath lädt Freeze nicht nach und erzeugt weder Abgabelinks noch Sperren.
 
 Platziere `@Lernpfad` bei gemeinsamem Import auf einer eigenen normalen Folie,
 getrennt von `@Auswertung`. Freeze ersetzt die Ansicht seiner Auswertungsfolie;
 dort zusätzlich platzierte Lernpfad-Bedienelemente sind deshalb nicht zuverlässig
-erreichbar. Auf der separaten Lernpfad-Folie bleibt der Button auch beim Öffnen
-eines freigegebenen Freeze-Links nutzbar.
+erreichbar. Auf der separaten Lernpfad-Folie werden die Empfehlungen auch beim
+Öffnen eines freigegebenen Freeze-Links automatisch geladen.
 
 ## Regeln für die Empfehlungen
 
 | Angebot | Themenreihenfolge | Zielniveau |
 | --- | --- | --- |
-| Grundlagen wiederholen | Anzahl aktuell falscher, teilweise richtiger und nachweislich unbearbeiteter Aufgaben | Einsteiger |
+| Grundlagen wiederholen | Summe gespeicherter Fehlversuche; teilweise richtige und unbearbeitete Aufgaben zählen ohne eigenen Fehlversuch jeweils eins | Einsteiger |
 | Weitere Übungen | Themenhäufigkeit im gesamten Ausgangskurs | Häufigstes ausdrücklich angegebenes Niveau des ausgewählten Themas |
 | Vertiefungen | Themenhäufigkeit im gesamten Ausgangskurs | Eine Stufe über dem bisherigen Niveau |
 
-Falsch, teilweise richtig und unbearbeitet zählen jeweils **eins pro Aufgabe und
-Thema**. Frühere Fehlversuche werden nicht zusätzlich gezählt. Bei Gleichstand
-im Ranking für **Grundlagen wiederholen** entscheidet die Themenhäufigkeit, anschließend die
-alphabetische Reihenfolge. Die beiden anderen Angebote verwenden bei gleicher
-Häufigkeit ebenfalls die alphabetische Reihenfolge. Doppelte Themen-Tags werden
-auch bei unterschiedlicher Großschreibung nur einmal gezählt.
+Jeder gespeicherte Fehlversuch zählt einzeln. Eine teilweise richtige oder
+unbearbeitete Aufgabe ohne eigenen Fehlversuch zählt **eins pro Aufgabe und
+Thema**. Fehlversuche bleiben auch dann Lernbedarf, wenn die Aufgabe später
+richtig gelöst wurde; die Ergebnisübersicht zeigt trotzdem nur den aktuellen
+Endzustand als richtig an. Bei Gleichstand im Ranking für **Grundlagen
+wiederholen** entscheiden zunächst die Zahl der Fehlversuche, dann die Zahl der
+betroffenen Aufgaben, die Themenhäufigkeit und schließlich die alphabetische
+Reihenfolge. Die beiden anderen Angebote verwenden bei gleicher Häufigkeit die
+alphabetische Reihenfolge. Doppelte Themen-Tags werden auch bei unterschiedlicher
+Großschreibung nur einmal gezählt.
 
 Bei gemischten Niveaus gilt die häufigste vorhandene Angabe; bei Gleichstand die
 niedrigere Stufe. Die sichtbaren Karten beschreiben das Lernziel in verständlicher
@@ -417,8 +427,8 @@ versionierte Browser-Schnittstelle der Aufgabensammlung:
 Die `index.html` der Aufgabensammlung und `@Lernpfad` rufen dieselben
 Funktionen zum Validieren, Filtern, Auswählen, Laden und Zusammenbauen auf.
 MathPath durchsucht weder deren gerendertes DOM noch steuert es deren Oberfläche.
-Eine unbekannte Schema-Version wird abgelehnt und kann beim nächsten Klick neu
-geladen werden.
+Eine unbekannte Schema-Version wird abgelehnt und kann beim nächsten automatischen
+Laden oder über den Wiederholen-Button nach einem Fehler neu geladen werden.
 
 | Lernpfad-Niveau | gemeinsames Zielgruppenprofil |
 | --- | --- |
@@ -512,19 +522,32 @@ geschlossen.
 
 ## Gelesene Zustände und Grenzen
 
-MathPath liest auf Anforderung die vorhandenen LiaScript-IndexedDB-Tabellen
-`quiz` und `survey` für die **exakte Kurs-URL und passende Hauptversion**.
-Es gibt keinen neuen Ergebnislogger, keine Port-Manipulation und keine
-automatisch ausgelöste Prüfung, Auflösung oder Rücksetzung. Auch Antworten
-anderer Folien werden gelesen; `@resetter` wird beim nächsten Klick berücksichtigt.
+MathPath greift für den Lernpfad **nicht auf IndexedDB zu**. Dadurch fordert der
+LiaScript-Viewer beim Öffnen von `@Lernpfad` auch keine Datenbankberechtigung für
+das externe Template an. Stattdessen beobachtet MathPath während der laufenden
+Kursseite ausschließlich den sichtbaren nativen Quizstatus und den von LiaScript
+angezeigten Versuchszähler. Gespeichert werden im Arbeitsspeicher nur Folie,
+Aufgabenindex, Endstatus und Versuchszahl – niemals eingegebene Antworten.
+Es gibt keinen neuen dauerhaften Ergebnislogger, keine Port-Manipulation und
+keine automatisch ausgelöste Prüfung, Auflösung oder Rücksetzung. `@resetter`
+wird unmittelbar berücksichtigt.
 
-Eine gespeicherte richtige Prüfung gilt als richtig; eine noch nicht richtig
-geprüfte Aufgabe mit Fehlversuch als falsch. Ein ausdrücklich gespeicherter
-Datensatz ohne Prüfung und ein fehlender Datensatz der passenden Kursversion
-gelten als **unbearbeitet**. Damit werden auch frische oder unbesuchte Aufgaben
-wie ursprünglich vorgesehen gemeinsam mit Fehlversuchen als Übungsbedarf
-gerankt. Ein vorhandener, aber strukturell unpassender Datensatz bleibt dagegen
-nicht auswertbar. Aufgedeckte Lösungen gelten nicht als Nachweis einer eigenen
+Ab Freeze 1.0.3 stellt dessen bereits vorhandener folienübergreifender
+DOM-Tracker dieselben reduzierten Live-Angaben über die lesende Schnittstelle
+bereit. Ohne Freeze verwendet MathPath einen eigenen sitzungsgebundenen Tracker.
+Nach einem vollständigen Neuladen kennt dieser zunächst nur Aufgaben, die der
+LiaScript-Viewer in dieser Seitensitzung erneut dargestellt hat; ein heimliches
+Auslesen dauerhaft gespeicherter Antworten findet bewusst nicht statt.
+
+Eine am Ende richtige Prüfung gilt als richtig; ihre vorherigen Fehlversuche
+bleiben ausschließlich für das Themenranking erhalten. Aus `Prüfen 13` bei einer
+richtigen Lösung werden daher zwölf vorherige Fehlversuche, aus `Prüfen 4` bei
+einer noch falschen Lösung vier. Eine noch nicht richtig geprüfte Aufgabe mit
+Fehlversuch gilt als falsch. Eine noch nie geprüfte Aufgabe gilt als
+**unbearbeitet**. Damit werden auch frische oder unbesuchte Aufgaben wie
+ursprünglich vorgesehen gemeinsam mit Fehlversuchen als Übungsbedarf gerankt.
+Ein vorhandener, aber strukturell unpassender Zustand bleibt dagegen nicht
+auswertbar. Aufgedeckte Lösungen gelten nicht als Nachweis einer eigenen
 richtigen Antwort. Die native Eigenschaft `score` wird nicht als
 Richtigkeitsquote verwendet.
 
@@ -538,8 +561,8 @@ ein ausdrücklicher nativer Quizstand bleibt auch bei 0 BE verwertbar.
 Vor der Send-Freigabe und während der automatischen Bewertung werden keine
 Richtig-/Falsch-Ergebnisse oder Angaben zu Lernlücken ausgegeben. Themen und ausdrücklich
 angegebene Niveaus dürfen bereits angezeigt werden. Bei älteren Freeze-Versionen
-ohne passende lesende Schnittstelle bleibt der gewöhnliche, nicht eingefrorene
-Kurs über den nativen LiaScript-Lernstand auswertbar. Ein eingefrorener oder im
+ohne Live-Schnittstelle bleibt der gewöhnliche, nicht eingefrorene Kurs über den
+sitzungsgebundenen MathPath-Tracker auswertbar. Ein eingefrorener oder im
 Send-Modus geschützter Zustand bleibt ohne passenden Freeze-Snapshot dagegen
 bewusst nicht auswertbar. Der oben dokumentierte Send-Sonderfall mit geöffneten
 Explain-Hinweisen bleibt bestehen; der Lernpfad repariert oder verändert keine
@@ -550,8 +573,8 @@ HTTP(S)-Markdown und der älteren exakten `parent:schullia-…`-Quelle unterstü
 MathPath die vom offiziellen LiaScript-Viewer verwendete, gzip-komprimierte
 `data:text/plain;charset=utf-8;Content-Encoding=gzip;base64,…`-Kursquelle.
 Akzeptiert wird nur die kanonische, mit `fflate@0.8.2` und dem festgelegten
-Optionssatz erzeugte Base64-/gzip-Darstellung; dadurch bleibt dieselbe Quelle
-auch dieselbe LiaScript-/IndexedDB-Identität. Andere Data-URI-Typen,
+Optionssatz erzeugte Base64-/gzip-Darstellung; dadurch bleibt die Quellenkennung
+des erzeugten Kurses stabil. Andere Data-URI-Typen,
 nichtkanonische oder ungültige Kodierungen, zusätzliche gzip-Daten sowie
 übergroße komprimierte oder entpackte Quellen werden abgelehnt. Aufgaben
 werden aus dem gesamten verfassten Kurs gelesen, Codebeispiele und der Kurskopf

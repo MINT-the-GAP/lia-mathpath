@@ -43,18 +43,30 @@ export function buildLearningReport(course: LearningCourse, snapshot: LearningSt
   for (const task of course.tasks) {
     if (seen.has(task.id)) continue;
     seen.add(task.id);
-    const status = protectedPhase ? 'unavailable' : states.get(task.id)?.status ?? 'unavailable';
+    const state = states.get(task.id);
+    const status = protectedPhase ? 'unavailable' : state?.status ?? 'unavailable';
+    const failedAttempts = protectedPhase || typeof state?.failedAttempts !== 'number' ||
+      !Number.isFinite(state.failedAttempts)
+      ? 0 : Math.max(0, Math.floor(state.failedAttempts));
     statusCounts[status]++;
     for (const topicKey of new Set(task.tags.map(key).filter(Boolean))) {
       let topic = topics.get(topicKey);
       if (!topic) {
         topic = { topic: task.tags.find(tag => key(tag) === topicKey)!.trim().replace(/\s+/g, ' '),
-          taskCount: 0, weaknessCount: 0, partialCount: 0, unavailableCount: 0,
+          taskCount: 0, weaknessCount: 0, failedAttemptCount: 0,
+          unansweredCount: 0, weaknessScore: 0, partialCount: 0, unavailableCount: 0,
           level: null, levelReason: '', levels: [0, 0, 0] };
         topics.set(topicKey, topic);
       }
       topic.taskCount++;
-      if (status === 'wrong' || status === 'partial' || status === 'unanswered') topic.weaknessCount++;
+      const currentNeed = status === 'wrong' || status === 'partial' || status === 'unanswered';
+      if (failedAttempts > 0 || currentNeed) topic.weaknessCount++;
+      topic.failedAttemptCount += failedAttempts;
+      if (status === 'unanswered') topic.unansweredCount++;
+      // A current wrong state already has at least one failed attempt. Partial
+      // and unanswered states without failure history each count like one
+      // failed check, as requested by the learning-path ranking.
+      topic.weaknessScore += (failedAttempts > 0 || currentNeed) ? Math.max(1, failedAttempts) : 0;
       if (status === 'partial') topic.partialCount++;
       if (status === 'unavailable') topic.unavailableCount++;
       if (task.level) topic.levels[LEVELS.indexOf(task.level)]++;
@@ -70,8 +82,10 @@ export function buildLearningReport(course: LearningCourse, snapshot: LearningSt
     } else topic.levelReason = 'Es liegt keine ausdrückliche Niveauangabe vor.';
     return topic;
   }).sort((a, b) => b.taskCount - a.taskCount || compare(a.topic, b.topic));
-  const weaknessTopics = ranked.filter(topic => topic.weaknessCount > 0)
-    .sort((a, b) => b.weaknessCount - a.weaknessCount || b.taskCount - a.taskCount || compare(a.topic, b.topic));
+  const weaknessTopics = ranked.filter(topic => topic.weaknessScore > 0)
+    .sort((a, b) => b.weaknessScore - a.weaknessScore ||
+      b.failedAttemptCount - a.failedAttemptCount || b.weaknessCount - a.weaknessCount ||
+      b.taskCount - a.taskCount || compare(a.topic, b.topic));
   return { courseUrl: course.url, context: { ...sourceContext, headerTags: [...sourceContext.headerTags] },
     phase: snapshot.phase, topics: ranked, weaknessTopics,
     statusCounts, warnings: [...new Set([...course.warnings, ...snapshot.warnings])],

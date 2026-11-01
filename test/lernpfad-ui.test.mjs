@@ -16,7 +16,7 @@ const report = () => buildLearningReport({ url: 'https://example.test/course.md'
   { id: 'a', tags: ['Algebra'], level: 'Einsteiger' }, { id: 'b', tags: ['Transfer'], level: 'Experte' }
 ] }, { phase: 'live', warnings: [], states: [{ taskId: 'a', status: 'wrong' }, { taskId: 'b', status: 'correct' }] })
 
-test('loads only on click, owns its controls, and updates each offer without quiz mutation', async () => {
+test('loads automatically, owns its controls, and updates each offer without quiz mutation', async () => {
   const dom = new JSDOM('<main><div class="lia-quiz"><input value="answer"><button>Check</button></div><lia-mathpath-lernpfad></lia-mathpath-lernpfad></main>')
   try {
     let reads = 0
@@ -26,15 +26,14 @@ test('loads only on click, owns its controls, and updates each offer without qui
     const quiz = dom.window.document.querySelector('.lia-quiz')
     const input = quiz.querySelector('input')
     const html = quiz.outerHTML
-    assert.equal(reads, 0)
-    assert.equal(host.shadowRoot.querySelectorAll('button').length, 1)
+    await tick()
+    assert.equal(reads, 1)
+    assert.equal(host.shadowRoot.querySelector('button.create'), null)
+    assert.equal(host.shadowRoot.querySelector('button.retry').hidden, true)
     assert.equal(
       host.shadowRoot.querySelector('.intro').textContent,
       'Hier findest du passende Übungen für deinen nächsten Lernschritt. Wähle ein Thema aus und öffne anschließend einen Kurs mit vier Aufgaben.'
     )
-    host.shadowRoot.querySelector('button').click()
-    await tick()
-    assert.equal(reads, 1)
     assert.equal(host.shadowRoot.querySelectorAll('select').length, 3)
     assert.equal(host.shadowRoot.querySelectorAll('button.open-course').length, 3)
     assert.equal(host.shadowRoot.querySelectorAll('button').length, 4)
@@ -47,7 +46,8 @@ test('loads only on click, owns its controls, and updates each offer without qui
     const copy = host.report
     copy.topics[0].topic = 'changed'
     assert.equal(host.report.topics[0].topic, 'Algebra')
-    host.shadowRoot.querySelector('button').click()
+    host.remove()
+    dom.window.document.body.append(host)
     await tick()
     assert.equal(reads, 2)
     assert.equal(host.shadowRoot.querySelectorAll('section').length, 3)
@@ -64,16 +64,14 @@ test('renders a compact token-based LiaScript interface with responsive and acce
     registerLearningPathElement(dom.window.document, async () => value)
     const host = dom.window.document.querySelector('lia-mathpath-lernpfad')
     const root = host.shadowRoot
-    const create = root.querySelector('button.create')
+    await tick()
+    const retry = root.querySelector('button.retry')
     const intro = root.querySelector('.intro')
     assert.ok(intro)
-    assert.ok(intro.compareDocumentPosition(create) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING)
-    assert.ok(create.classList.contains('lia-btn'))
-    assert.ok(create.classList.contains('lia-btn--primary'))
-    assert.equal(create.getAttribute('aria-controls'), 'lia-mathpath-summary lia-mathpath-offers')
-
-    create.click()
-    await tick()
+    assert.ok(retry.hidden)
+    assert.ok(retry.classList.contains('lia-btn'))
+    assert.ok(retry.classList.contains('lia-btn--primary'))
+    assert.equal(retry.getAttribute('aria-controls'), 'lia-mathpath-summary lia-mathpath-offers')
 
     const style = root.querySelector('style').textContent
     assert.match(style, /:host\{[\s\S]*font-size:16px/)
@@ -163,7 +161,6 @@ test('generates from the changed dropdown snapshot, blocks double starts, and re
     }
     registerLearningPathElement(dom.window.document, async () => report(), open)
     const host = dom.window.document.querySelector('lia-mathpath-lernpfad')
-    host.shadowRoot.querySelector('button.create').click()
     await tick()
     const section = host.shadowRoot.querySelector('[data-offer=practice]')
     const select = section.querySelector('select')
@@ -217,9 +214,8 @@ test('multiple Lernpfad hosts own independent listeners and each click starts on
       }
     })
     const hosts = [...dom.window.document.querySelectorAll('lia-mathpath-lernpfad')]
+    await tick()
     for (const host of hosts) {
-      host.shadowRoot.querySelector('button.create').click()
-      await tick()
       host.shadowRoot.querySelector('[data-offer=practice] button.open-course').click()
       await tick()
     }
@@ -243,7 +239,6 @@ test('Send collection and grading show recommendations but cannot start a course
         }
       })
       const host = dom.window.document.querySelector('lia-mathpath-lernpfad')
-      host.shadowRoot.querySelector('button.create').click()
       await tick()
       assert.equal(host.shadowRoot.querySelectorAll('select').length, 3)
       const buttons = [...host.shadowRoot.querySelectorAll('button.open-course')]
@@ -272,7 +267,6 @@ test('a late Send transition disables an already rendered live report before pop
       }
     })
     const host = dom.window.document.querySelector('lia-mathpath-lernpfad')
-    host.shadowRoot.querySelector('button.create').click()
     await tick()
     const button = host.shadowRoot.querySelector('[data-offer=practice] button.open-course')
     assert.equal(button.disabled, false)
@@ -296,14 +290,11 @@ test('disconnect cancels a pending render and reconnect allows a fresh request',
       return reads === 1 ? new Promise(done => { resolve = done }) : Promise.resolve(report())
     })
     const host = dom.window.document.querySelector('lia-mathpath-lernpfad')
-    host.shadowRoot.querySelector('button').click()
     host.remove()
     resolve(report())
     await tick()
     assert.equal(host.report, null)
     dom.window.document.body.append(host)
-    assert.match(host.shadowRoot.querySelector('[role=status]').textContent, /abgebrochen/)
-    host.shadowRoot.querySelector('button').click()
     await tick()
     assert.equal(reads, 2)
     assert.equal(host.report.topics.length, 2)
@@ -313,17 +304,45 @@ test('disconnect cancels a pending render and reconnect allows a fresh request',
 test('a failed refresh removes stale recommendations and supports retry', async () => {
   const dom = new JSDOM('<lia-mathpath-lernpfad></lia-mathpath-lernpfad>')
   try {
-    let fail = false
+    let fail = true
     registerLearningPathElement(dom.window.document, async () => { if (fail) throw new Error('Quelle nicht erreichbar'); return report() })
     const host = dom.window.document.querySelector('lia-mathpath-lernpfad')
-    host.shadowRoot.querySelector('button').click()
     await tick()
+    assert.equal(host.report, null)
+    assert.equal(host.shadowRoot.querySelector('button.retry').hidden, false)
+    assert.match(host.shadowRoot.querySelector('[role=status]').textContent, /Quelle nicht erreichbar/)
+    fail = false
+    host.shadowRoot.querySelector('button.retry').click()
+    await tick()
+    assert.equal(host.report.topics.length, 2)
+    assert.equal(host.shadowRoot.querySelector('button.retry').hidden, true)
     fail = true
-    host.shadowRoot.querySelector('button').click()
+    host.remove()
+    dom.window.document.body.append(host)
     await tick()
     assert.equal(host.report, null)
     assert.equal(host.shadowRoot.querySelectorAll('section').length, 0)
-    assert.equal(host.shadowRoot.querySelector('button').disabled, false)
-    assert.match(host.shadowRoot.querySelector('[role=status]').textContent, /Quelle nicht erreichbar/)
+    assert.equal(host.shadowRoot.querySelector('button.retry').disabled, false)
+    assert.equal(host.shadowRoot.querySelector('button.retry').hidden, false)
+  } finally { dom.window.close() }
+})
+
+test('retries a transient unavailable startup state without another user click', async () => {
+  const dom = new JSDOM('<lia-mathpath-lernpfad></lia-mathpath-lernpfad>')
+  try {
+    let reads = 0
+    registerLearningPathElement(dom.window.document, async () => {
+      reads++
+      const value = report()
+      value.phase = reads === 1 ? 'unavailable' : 'live'
+      return value
+    })
+    const host = dom.window.document.querySelector('lia-mathpath-lernpfad')
+    await tick()
+    assert.equal(host.report.phase, 'unavailable')
+    await new Promise(resolve => setTimeout(resolve, 200))
+    assert.equal(reads, 2)
+    assert.equal(host.report.phase, 'live')
+    assert.equal(host.shadowRoot.querySelector('button.retry').hidden, true)
   } finally { dom.window.close() }
 })

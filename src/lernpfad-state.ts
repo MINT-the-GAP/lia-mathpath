@@ -1,8 +1,5 @@
 import type { LearningCourse, LearningStateSnapshot, LearningTask, LearningTaskState } from './lernpfad-types';
-import {
-  decodeLiaScriptGzipDataCourse,
-  isLiaScriptGzipDataCourseUri,
-} from './course-data-uri.js';
+import { readRuntimeLearningState } from './lernpfad-runtime-state.js';
 
 type Row = { id: unknown; version: unknown; data: unknown; created?: unknown };
 type NativeTables = { quiz: Row[]; survey: Row[] };
@@ -13,13 +10,7 @@ type RuntimeWindow = Window & typeof globalThis & {
   __liaSubmissionDemo?: unknown;
 };
 const EMPTY: NativeTables = { quiz: [], survey: [] };
-const TIMEOUT = 2000;
 const NO_NATIVE_RECORD = Symbol('no-native-record');
-
-function isNativeCourseIdentity(value: string): boolean {
-  if (/^https?:\/\//i.test(value) || /^parent:schullia-[a-z0-9][a-z0-9-]{7,159}$/i.test(value)) return true;
-  return isLiaScriptGzipDataCourseUri(value);
-}
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -30,15 +21,19 @@ function unavailable(task: LearningTask, reason: string): LearningTaskState {
 }
 
 /** score is not a correctness measure: LiaScript also stores score:1 on failure. */
-export function classifyNativeLearningState(task: LearningTask, raw: unknown, source = 'indexeddb'): LearningTaskState {
+export function classifyNativeLearningState(task: LearningTask, raw: unknown, source = 'native'): LearningTaskState {
   if (!record(raw) || ![-1, 0, 1].includes(raw.solved as number) ||
       typeof raw.trial !== 'number' || !Number.isFinite(raw.trial) || raw.trial < 0) {
     return unavailable(task, 'Für diese Aufgabe liegt kein lesbarer Bearbeitungsstand vor.');
   }
-  const base = { taskId: task.id, source };
+  const trials = Math.floor(raw.trial as number);
+  // LiaScript increments `trial` for every check, including the successful
+  // final check. Keep only the failed checks as recommendation evidence.
+  const failedAttempts = raw.solved === 1 ? Math.max(0, trials - 1) : trials;
+  const base = { taskId: task.id, source, failedAttempts };
   if (raw.solved === 1) return { ...base, status: 'correct', reason: 'Die letzte Prüfung war richtig.' };
   if (raw.solved === -1) return { ...base, status: 'unavailable', reason: 'Die Lösung wurde aufgedeckt; eine eigene richtige Antwort ist nicht belegt.' };
-  if (raw.trial > 0) return { ...base, status: 'wrong', reason: 'Die aktuelle Antwort wurde noch nicht richtig geprüft.' };
+  if (trials > 0) return { ...base, status: 'wrong', reason: 'Die aktuelle Antwort wurde noch nicht richtig geprüft.' };
   // A real zero-attempt record is evidence; missing records are handled by the
   // course-level "not completed" policy in projectLearningState.
   return { ...base, status: 'unanswered', reason: 'Es ist noch keine Prüfung gespeichert.' };
@@ -87,6 +82,22 @@ function frozenElement(task: LearningTask, payload: unknown): unknown {
   return result;
 }
 
+function liveElement(task: LearningTask, liveState: unknown): unknown {
+  if (liveState === null) return NO_NATIVE_RECORD;
+  if (!record(liveState) || liveState.version !== 1 || !record(liveState.slides)) return undefined;
+  const tasks = liveState.slides[task.hash];
+  if (tasks === undefined) return NO_NATIVE_RECORD;
+  if (!Array.isArray(tasks)) return undefined;
+  const live = tasks.find(value => record(value) && value.taskIndex === task.taskIndex);
+  if (live === undefined) return NO_NATIVE_RECORD;
+  if (!record(live) || !['correct', 'wrong', 'resolved', 'open'].includes(String(live.outcome)) ||
+      typeof live.trial !== 'number' || !Number.isSafeInteger(live.trial) || live.trial < 0) return undefined;
+  return {
+    solved: live.outcome === 'correct' ? 1 : live.outcome === 'resolved' ? -1 : 0,
+    trial: live.trial,
+  };
+}
+
 function validIdentity(course: LearningCourse, bridge: Record<string, unknown>): boolean {
   return bridge.version === 1 && bridge.courseUrl === course.url &&
     typeof bridge.courseVersion === 'string' && bridge.courseVersion === course.version;
@@ -119,6 +130,8 @@ export function projectLearningState(
     return { phase, warnings, states: course.tasks.map(task => unavailable(task, reason)) };
   }
   if (course.version === null) warnings.push('Ohne Kursversion können gespeicherte Antworten nicht sicher zugeordnet werden.');
+  const bridgeLive = phase === 'live' && record(bridge) && validIdentity(course, bridge) &&
+    Object.prototype.hasOwnProperty.call(bridge, 'liveState');
   const states = course.tasks.map(task => {
     if (!task.mappingSafe || task.nativeIndex === null || task.table === null) {
       return unavailable(task, 'Die Aufgabe kann keinem eindeutigen nativen Bearbeitungsstand zugeordnet werden.');
@@ -131,56 +144,17 @@ export function projectLearningState(
       return classifyNativeLearningState(task, frozenElement(task, bridge.payload), 'freeze-snapshot');
     }
     if (task.table === 'survey') return unavailable(task, 'Für die offene Antwort liegt keine automatische Bewertung vor.');
-    const element = nativeElement(task, course, tables.quiz);
+    const element = bridgeLive
+      ? liveElement(task, bridge.liveState)
+      : nativeElement(task, course, tables.quiz);
     if (element === NO_NATIVE_RECORD) {
-      return { taskId: task.id, status: 'unanswered' as const, source: 'indexeddb',
-        reason: 'Für diese Aufgabe ist noch keine Prüfung gespeichert.' };
+      return { taskId: task.id, status: 'unanswered' as const,
+        source: bridgeLive ? 'freeze-live' : 'native',
+        failedAttempts: 0, reason: 'Für diese Aufgabe ist noch keine Prüfung gespeichert.' };
     }
-    return classifyNativeLearningState(task, element);
+    return classifyNativeLearningState(task, element, bridgeLive ? 'freeze-live' : 'native');
   });
   return { phase, warnings, states };
-}
-
-/** Exact URL only: never read a different course with the same filename. */
-export async function readNativeLearningTables(courseUrl: string, factory?: IDBFactory): Promise<NativeTables> {
-  if (!factory || !isNativeCourseIdentity(courseUrl)) return EMPTY;
-  if (isLiaScriptGzipDataCourseUri(courseUrl)) {
-    try { decodeLiaScriptGzipDataCourse(courseUrl); }
-    catch { return EMPTY; }
-  }
-  return new Promise(resolve => {
-    let db: IDBDatabase | undefined;
-    let finished = false;
-    const finish = (tables: NativeTables): void => {
-      if (finished) { db?.close(); return; }
-      finished = true;
-      clearTimeout(timer);
-      db?.close();
-      resolve(tables);
-    };
-    const timer = setTimeout(() => finish(EMPTY), TIMEOUT);
-    try {
-      const request = factory.open(courseUrl);
-      request.onupgradeneeded = () => { request.transaction?.abort(); finish(EMPTY); };
-      request.onerror = request.onblocked = () => finish(EMPTY);
-      request.onsuccess = () => {
-        db = request.result;
-        if (finished) { db.close(); return; }
-        const names = ['quiz', 'survey'].filter(name => db!.objectStoreNames.contains(name));
-        if (!names.length) { finish(EMPTY); return; }
-        try {
-          const tx = db.transaction(names, 'readonly');
-          const tables: NativeTables = { quiz: [], survey: [] };
-          for (const name of names) {
-            const read = tx.objectStore(name).getAll();
-            read.onsuccess = () => { tables[name as keyof NativeTables] = read.result; };
-          }
-          tx.oncomplete = () => finish(tables);
-          tx.onabort = tx.onerror = () => finish(EMPTY);
-        } catch { finish(EMPTY); }
-      };
-    } catch { finish(EMPTY); }
-  });
 }
 
 function freezeContext(win: RuntimeWindow): { bridge: unknown; present: boolean } {
@@ -190,25 +164,28 @@ function freezeContext(win: RuntimeWindow): { bridge: unknown; present: boolean 
     classes?.contains('lia-send-review'));
   // A Freeze import alone is not a protected result state. Older published
   // variants expose lifecycle/bootstrap globals but no learning-state reader;
-  // in an ordinary live course MathPath must still read LiaScript's native
-  // readonly state. Frozen and Send phases remain closed without a valid bridge.
+  // ordinary live courses then use MathPath's in-memory DOM tracker. Frozen
+  // and Send phases remain closed without a valid bridge.
   const present = !!win.__liaFreezeLearningStateV1__ || protectedState;
   let bridge: unknown = null;
   try { bridge = win.__liaFreezeLearningStateV1__?.read(); } catch { /* never infer live from a failed bridge */ }
   return { bridge, present };
 }
 
-/** Fresh read per click; no observer, event listener, port patch, or state write. */
+/** Fresh read per request; no persistent-storage access or state write. */
 export async function readLearningState(course: LearningCourse, win: RuntimeWindow = window): Promise<LearningStateSnapshot> {
   const initial = freezeContext(win);
+  if (record(initial.bridge) && validIdentity(course, initial.bridge) &&
+      Object.prototype.hasOwnProperty.call(initial.bridge, 'liveState')) {
+    return projectLearningState(course, EMPTY, initial.bridge, initial.present);
+  }
   const gated = projectLearningState(course, EMPTY, initial.bridge, initial.present);
   if (gated.phase !== 'live') return gated;
-  let factory: IDBFactory | undefined;
-  try { factory = win.indexedDB; } catch { /* browser can deny persistent storage */ }
-  const tables = await readNativeLearningTables(course.url, factory);
-  // A delayed Freeze bootstrap or Send phase transition may occur while IDB opens.
-  const current = freezeContext(win);
-  const snapshot = projectLearningState(course, tables, current.bridge, current.present);
-  if (!factory && snapshot.phase === 'live') snapshot.warnings.push('Gespeicherte Antworten sind in diesem Browser nicht lesbar.');
-  return snapshot;
+  // Standalone and older Freeze releases use MathPath's in-memory DOM tracker.
+  // It observes only result classes and trial labels; learner answers stay private.
+  const localBridge = {
+    version: 1, courseUrl: course.url, courseVersion: course.version,
+    phase: 'live', liveState: readRuntimeLearningState(win),
+  };
+  return projectLearningState(course, EMPTY, localBridge, false);
 }

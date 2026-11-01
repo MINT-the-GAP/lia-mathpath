@@ -56,9 +56,10 @@ button:focus-visible,select:focus-visible{
   outline:3px solid var(--_accent);
   outline-offset:3px;
 }
-.create{
+.retry{
   display:inline-flex;
   max-width:100%;
+  margin-top:.7em;
   align-items:center;
   justify-content:center;
   gap:.55em;
@@ -75,7 +76,8 @@ button:focus-visible,select:focus-visible{
   font-size:.9375em;
   line-height:1.5;
 }
-.create[aria-busy=true]::after{
+.retry[hidden]{display:none}
+.retry[aria-busy=true]::after{
   width:.85em;
   height:.85em;
   flex:0 0 auto;
@@ -249,15 +251,15 @@ select{
 @media(max-width:42em){
   :host{margin:1em 0}
   .offers{grid-template-columns:minmax(0,1fr)}
-  .create{width:100%}
+  .retry{width:100%}
 }
 @media(prefers-reduced-motion:reduce){
   button{transition:none}
-  .create[aria-busy=true]::after{animation:none}
+  .retry[aria-busy=true]::after{animation:none}
 }
 @media(forced-colors:active){
   :host{color:CanvasText}
-  .create{border-color:Highlight;background:Highlight;color:HighlightText;box-shadow:none}
+  .retry{border-color:Highlight;background:Highlight;color:HighlightText;box-shadow:none}
   .open-course{border-color:LinkText;color:LinkText}
   .open-course:hover:not(:disabled){background:Highlight;color:HighlightText}
   section,.summary-item,.summary-message,.level,.count,.warnings,.course-status,select{border-color:CanvasText;background:Canvas;color:CanvasText;box-shadow:none}
@@ -276,16 +278,34 @@ export function registerLearningPathElement(
 ): void {
   const win = doc.defaultView;
   if (!win || win.customElements.get('lia-mathpath-lernpfad')) return;
+  const runtimeWindow = win;
   class LearningPathElement extends win.HTMLElement {
     private value: LearningReport | null = null;
     private request = 0;
     private generation = 0;
+    private refreshing = false;
     private generating = false;
+    private refreshTimer: number | null = null;
+    private transientRetryTimer: number | null = null;
+    private transientRetries = 0;
     private generationController: AbortController | null = null;
-    private button: HTMLButtonElement;
+    private retryButton: HTMLButtonElement;
     private status: HTMLDivElement;
     private results: HTMLDivElement;
     private warnings: HTMLDivElement;
+    private readonly handleCourseInteraction = (event: Event): void => {
+      const target = event.target;
+      if (!(target instanceof runtimeWindow.Element) ||
+          !target.closest('.lia-quiz__check, lia-resetter-host input[type=button]')) return;
+      if (this.refreshTimer !== null) runtimeWindow.clearTimeout(this.refreshTimer);
+      // Let LiaScript finish rendering the fresh quiz outcome before reading
+      // the DOM tracker. Repeated checks are debounced into one update.
+      this.refreshTimer = runtimeWindow.setTimeout(() => {
+        this.refreshTimer = null;
+        this.transientRetries = 0;
+        void this.refresh();
+      }, 150);
+    };
     get report(): LearningReport | null { return this.value ? JSON.parse(JSON.stringify(this.value)) : null; }
     private protectedRuntimePhase(): 'collect' | 'grading' | null {
       const classes = doc.body?.classList;
@@ -312,11 +332,12 @@ export function registerLearningPathElement(
       const intro = doc.createElement('p');
       intro.className = 'intro';
       intro.textContent = 'Hier findest du passende Übungen für deinen nächsten Lernschritt. Wähle ein Thema aus und öffne anschließend einen Kurs mit vier Aufgaben.';
-      this.button = doc.createElement('button');
-      this.button.type = 'button';
-      this.button.className = 'create lia-btn lia-btn--primary';
-      this.button.textContent = 'Empfehlungen für deinen weiteren Lernpfad erstellen';
-      this.button.setAttribute('aria-controls', 'lia-mathpath-summary lia-mathpath-offers');
+      this.retryButton = doc.createElement('button');
+      this.retryButton.type = 'button';
+      this.retryButton.className = 'retry lia-btn lia-btn--primary';
+      this.retryButton.textContent = 'Empfehlungen erneut laden';
+      this.retryButton.hidden = true;
+      this.retryButton.setAttribute('aria-controls', 'lia-mathpath-summary lia-mathpath-offers');
       this.status = doc.createElement('div');
       this.status.id = 'lia-mathpath-summary';
       this.status.className = 'summary';
@@ -333,24 +354,37 @@ export function registerLearningPathElement(
       this.warnings.setAttribute('aria-live', 'polite');
       this.warnings.setAttribute('aria-atomic', 'true');
       this.warnings.setAttribute('data-state', 'warning');
-      shadow.append(style, intro, this.button, this.status, this.warnings, this.results);
-      this.button.addEventListener('click', () => { void this.refresh(); });
+      shadow.append(style, intro, this.status, this.retryButton, this.warnings, this.results);
+      this.retryButton.addEventListener('click', () => { void this.refresh(); });
+    }
+    connectedCallback(): void {
+      doc.addEventListener('click', this.handleCourseInteraction);
+      this.transientRetries = 0;
+      void this.refresh();
     }
     disconnectedCallback(): void {
+      const wasRefreshing = this.refreshing;
       const wasGenerating = this.generating;
       this.request++;
       this.generation++;
+      doc.removeEventListener('click', this.handleCourseInteraction);
+      if (this.refreshTimer !== null) runtimeWindow.clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
+      if (this.transientRetryTimer !== null) runtimeWindow.clearTimeout(this.transientRetryTimer);
+      this.transientRetryTimer = null;
       this.generationController?.abort();
       this.generationController = null;
+      this.refreshing = false;
       this.generating = false;
-      if (this.button.disabled && !wasGenerating) {
-        this.setSummaryMessage('Aktualisierung abgebrochen. Bitte erneut erstellen.', 'error');
+      if (wasRefreshing && !wasGenerating) {
+        this.setSummaryMessage('Aktualisierung abgebrochen. Die Empfehlungen werden beim Öffnen erneut geladen.', 'error');
+        this.retryButton.hidden = false;
       }
       this.results.querySelectorAll<HTMLParagraphElement>('.course-status[data-state=busy]').forEach(output => {
         this.setCourseStatus(output, 'Die Kursvorbereitung wurde abgebrochen. Bitte erneut versuchen.', 'error');
       });
-      this.button.disabled = false;
-      this.button.removeAttribute('aria-busy');
+      this.retryButton.disabled = false;
+      this.retryButton.removeAttribute('aria-busy');
       this.setOfferControlsDisabled(false);
     }
     private setSummaryMessage(text: string, state: 'busy' | 'error' | 'notice'): void {
@@ -384,10 +418,16 @@ export function registerLearningPathElement(
       });
     }
     private async refresh(): Promise<void> {
-      if (this.button.disabled || this.generating) return;
+      if (this.refreshing || this.generating) return;
+      if (this.transientRetryTimer !== null) {
+        runtimeWindow.clearTimeout(this.transientRetryTimer);
+        this.transientRetryTimer = null;
+      }
       const request = ++this.request;
-      this.button.disabled = true;
-      this.button.setAttribute('aria-busy', 'true');
+      this.refreshing = true;
+      this.retryButton.hidden = true;
+      this.retryButton.disabled = true;
+      this.retryButton.setAttribute('aria-busy', 'true');
       this.setOfferControlsDisabled(true);
       this.setSummaryMessage('Dein aktueller Lernstand wird gelesen …', 'busy');
       try {
@@ -395,11 +435,29 @@ export function registerLearningPathElement(
         if (request !== this.request || !this.isConnected) return;
         this.value = JSON.parse(JSON.stringify(report));
         this.render();
+        // With MathPath before Freeze in the import list, the custom element
+        // can connect during Freeze's short bootstrap window. Retry that
+        // transient protected state automatically instead of freezing the
+        // first, premature result on screen.
+        if (report.phase === 'unavailable' && this.transientRetries < 4) {
+          const delay = 150 * (2 ** this.transientRetries++);
+          if (this.transientRetryTimer !== null) {
+            runtimeWindow.clearTimeout(this.transientRetryTimer);
+          }
+          this.transientRetryTimer = runtimeWindow.setTimeout(() => {
+            this.transientRetryTimer = null;
+            void this.refresh();
+          }, delay);
+        } else if (report.phase !== 'unavailable') {
+          this.transientRetries = 0;
+        }
       } catch (error) {
         if (request !== this.request || !this.isConnected) return;
         this.value = null;
+        this.transientRetries = 0;
         this.results.replaceChildren();
         this.warnings.textContent = '';
+        this.retryButton.hidden = false;
         this.setSummaryMessage(
           error instanceof Error && error.name !== 'AbortError'
             ? error.message
@@ -408,8 +466,9 @@ export function registerLearningPathElement(
         );
       } finally {
         if (request === this.request) {
-          this.button.disabled = false;
-          this.button.removeAttribute('aria-busy');
+          this.refreshing = false;
+          this.retryButton.disabled = false;
+          this.retryButton.removeAttribute('aria-busy');
           this.setOfferControlsDisabled(false);
         }
       }
@@ -443,8 +502,8 @@ export function registerLearningPathElement(
       const controller = new AbortController();
       this.generationController = controller;
       this.generating = true;
-      this.button.disabled = true;
-      this.button.setAttribute('aria-busy', 'true');
+      this.retryButton.disabled = true;
+      this.retryButton.setAttribute('aria-busy', 'true');
       this.setOfferControlsDisabled(true);
       const trigger = output.closest('section')?.querySelector<HTMLButtonElement>('button.open-course') || null;
       trigger?.setAttribute('aria-busy', 'true');
@@ -474,8 +533,8 @@ export function registerLearningPathElement(
           trigger?.removeAttribute('aria-busy');
           this.generationController = null;
           this.generating = false;
-          this.button.disabled = false;
-          this.button.removeAttribute('aria-busy');
+          this.retryButton.disabled = false;
+          this.retryButton.removeAttribute('aria-busy');
           this.setOfferControlsDisabled(false);
         }
       }

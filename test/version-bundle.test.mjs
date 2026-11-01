@@ -50,3 +50,8 @@ test('versioned release bundle is byte-identical to dist/index.js', async () => 
 
   assert.deepEqual(versioned, canonical)
 })
+
+test('release bundle never requests direct IndexedDB access', async () => {
+  const source = await readFile(path.join(root, 'dist', 'index.js'), 'utf8')
+  assert.doesNotMatch(source, /\b(?:indexedDB|IDBFactory|IDBDatabase)\b/)
+})

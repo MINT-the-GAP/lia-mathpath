@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { gzipSync } from 'fflate'
 import {
   classifyNativeLearningState, nativeCourseVersion, projectLearningState,
-  readLearningState, readNativeLearningTables
+  readLearningState
 } from '../src/lernpfad-state.ts'
 
 const task = (changes = {}) => ({ id: '#2:0', hash: '#2', sectionIndex: 1,
@@ -16,15 +15,26 @@ const tables = (data, version = 2) => ({ quiz: [{ id: 1, version, data }], surve
 const native = (solved, trial) => ({ solved, trial, score: 1, state: { Multi: [{ Text: '' }] } })
 const bridge = (changes = {}) => ({ version: 1, courseUrl: course().url, courseVersion: '2.3.4',
   phase: 'review', payload: { s: [{ h: '#2', quiz: { 1: [native(1, 1)] } }] }, manualAwards: {}, ...changes })
-const dataCoursePrefix = 'data:text/plain;charset=utf-8;Content-Encoding=gzip;base64,'
-const canonicalGzipOptions = { level: 6, mem: 8, mtime: 0 }
-const dataCourseUrl = () => dataCoursePrefix + Buffer.from(gzipSync(
-  Buffer.from('<!--\nversion: 2.3.4\n-->\n\n# Kurs'), canonicalGzipOptions)).toString('base64')
+const liveBridge = (tasks, changes = {}) => bridge({
+  phase: 'live', payload: null,
+  liveState: { version: 1, slides: { '#2': tasks } },
+  ...changes,
+})
 
 test('native score:1 never turns a failed or untouched task into a correct answer', () => {
-  assert.equal(classifyNativeLearningState(task(), native(0, 3)).status, 'wrong')
+  assert.deepEqual(
+    (({ status, failedAttempts }) => ({ status, failedAttempts }))(
+      classifyNativeLearningState(task(), native(0, 3))
+    ),
+    { status: 'wrong', failedAttempts: 3 }
+  )
   assert.equal(classifyNativeLearningState(task(), native(0, 0)).status, 'unanswered')
-  assert.equal(classifyNativeLearningState(task(), native(1, 3)).status, 'correct')
+  assert.deepEqual(
+    (({ status, failedAttempts }) => ({ status, failedAttempts }))(
+      classifyNativeLearningState(task(), native(1, 13))
+    ),
+    { status: 'correct', failedAttempts: 12 }
+  )
   assert.equal(classifyNativeLearningState(task(), native(-1, 0)).status, 'unavailable')
   assert.equal(classifyNativeLearningState(task(), undefined).status, 'unavailable')
   assert.equal(classifyNativeLearningState(task(), { solved: 0 }).status, 'unavailable')
@@ -45,7 +55,7 @@ test('missing compatible records are unanswered while malformed vectors remain u
   assert.equal(projectLearningState(course({ version: null }), tables([native(1, 1)])).states[0].status, 'unavailable')
 })
 
-test('reads the latest record of the compatible major version and respects reset on every click', () => {
+test('reads the latest record of the compatible major version and respects reset on every read', () => {
   const data = tables([native(1, 1)])
   data.quiz[0].created = 1
   data.quiz.push({ id: 1, version: 2, created: 2, data: [native(0, 0)] })
@@ -80,7 +90,7 @@ test('Send and pending or incompatible Freeze never reveal native or frozen outc
   assert.equal(projectLearningState(course({ sendMode: true }), data).states[0].status, 'unavailable')
 })
 
-test('review trusts its snapshot instead of stale live IndexedDB, including evaluation-only native results', () => {
+test('review trusts its snapshot instead of stale live fallback data, including evaluation-only native results', () => {
   const frozen = bridge()
   const result = projectLearningState(course(), tables([native(0, 8)]), frozen, true)
   assert.equal(result.states[0].status, 'correct')
@@ -102,105 +112,37 @@ test('manual awards use authored task identity and distinguish zero, partial and
   assert.equal(projectLearningState(zero, empty(), bridge({ manualAwards: { '#2::task::1': 0 } }), true).states[0].status, 'unavailable')
 })
 
-function fakeDatabase(data, beforeComplete = () => {}) {
-  const calls = { opens: [], modes: [], closed: 0 }
-  const factory = { open(url) {
-    calls.opens.push(url)
-    const request = {}
-    const db = { objectStoreNames: { contains: name => name === 'quiz' },
-      close: () => calls.closed++, transaction(names, mode) {
-        calls.modes.push(mode)
-        const tx = { objectStore() { return { getAll() {
-          const read = {}
-          setImmediate(() => {
-            read.result = data; read.onsuccess?.(); beforeComplete(); tx.oncomplete?.()
-          })
-          return read
-        } } } }
-        return tx
-      } }
-    setImmediate(() => { request.result = db; request.onsuccess?.() })
-    return request
-  } }
-  return { calls, factory }
-}
-
-test('opens only the exact course URL and reads through a readonly transaction', async () => {
-  const { calls, factory } = fakeDatabase(tables([native(1, 1)]).quiz)
-  const data = await readNativeLearningTables(course().url, factory)
-  assert.equal(data.quiz[0].data[0].solved, 1)
-  assert.deepEqual(calls.opens, [course().url])
-  assert.deepEqual(calls.modes, ['readonly'])
-  assert.equal(calls.closed, 1)
+test('projects live Freeze metadata with exact failed-attempt counts', () => {
+  const authored = course({ tasks: [
+    task(),
+    task({ id: '#2:1', taskIndex: 1, nativeIndex: 1 }),
+    task({ id: '#2:2', taskIndex: 2, nativeIndex: 2 }),
+  ] })
+  const live = liveBridge([
+    { taskIndex: 0, nativeIndex: 0, table: 'quiz', outcome: 'correct', trial: 13 },
+    { taskIndex: 1, nativeIndex: 1, table: 'quiz', outcome: 'wrong', trial: 4 },
+  ])
+  assert.deepEqual(projectLearningState(authored, empty(), live, true).states.map(state =>
+    [state.status, state.failedAttempts]), [
+    ['correct', 12], ['wrong', 4], ['unanswered', 0],
+  ])
 })
 
-test('reads the exact generated parent course identity but rejects arbitrary custom protocols', async () => {
-  const parentUrl = 'parent:schullia-0123456789abcdef'
-  const { calls, factory } = fakeDatabase(tables([native(1, 1)]).quiz)
-  const data = await readNativeLearningTables(parentUrl, factory)
-  assert.equal(data.quiz[0].data[0].solved, 1)
-  assert.deepEqual(calls.opens, [parentUrl])
-  assert.deepEqual(await readNativeLearningTables('parent:other-0123456789abcdef', factory), empty())
-  assert.deepEqual(calls.opens, [parentUrl])
-})
-
-test('opens the exact official LiaScript gzip data-course identity only', async () => {
-  const dataUrl = dataCourseUrl()
-  const { calls, factory } = fakeDatabase(tables([native(1, 1)]).quiz)
-  const data = await readNativeLearningTables(dataUrl, factory)
-  assert.equal(data.quiz[0].data[0].solved, 1)
-  assert.deepEqual(calls.opens, [dataUrl])
-  assert.deepEqual(await readNativeLearningTables(
-    dataUrl.replace('Content-Encoding', 'content-encoding'), factory), empty())
-  assert.deepEqual(await readNativeLearningTables('data:text/html;base64,PGgxPkZha2U8L2gxPg==', factory), empty())
-  const changedHeader = Buffer.from(dataUrl.slice(dataCoursePrefix.length), 'base64')
-  changedHeader[9] ^= 1
-  assert.deepEqual(await readNativeLearningTables(
-    dataCoursePrefix + changedHeader.toString('base64'), factory), empty())
-  assert.deepEqual(calls.opens, [dataUrl])
-})
-
-test('aborts absent database creation and tolerates disabled browser storage', async () => {
-  let aborted = 0
-  const factory = { open() {
-    const request = { transaction: { abort: () => aborted++ } }
-    setImmediate(() => request.onupgradeneeded?.())
-    return request
-  } }
-  assert.deepEqual(await readNativeLearningTables(course().url, factory), empty())
-  assert.equal(aborted, 1)
-  assert.deepEqual(await readNativeLearningTables(course().url), empty())
-})
-
-test('checks deferred Send again after an asynchronous database read', async () => {
-  let current = bridge({ phase: 'live', payload: null })
-  const { factory } = fakeDatabase(tables([native(1, 1)]).quiz, () => { current = bridge({ phase: 'grading' }) })
-  const win = { indexedDB: factory, __liaFreezeLearningStateV1__: { read: () => current },
-    document: { getElementById: () => null, body: { classList: { contains: () => false } } } }
-  const result = await readLearningState(course(), win)
-  assert.equal(result.phase, 'grading')
-  assert.equal(result.states[0].status, 'unavailable')
-})
-
-test('a legacy Freeze import without a protected phase keeps native live state available', async () => {
-  const { calls, factory } = fakeDatabase(tables([native(1, 1)]).quiz)
-  const win = { indexedDB: factory, __liaFreezeV2LifecycleV1__: { bootScheduled: true },
-    __liaSubmissionDemo: {},
-    document: { getElementById: () => ({}), body: { classList: { contains: () => false } } } }
-  const result = await readLearningState(course(), win)
-  assert.equal(result.phase, 'live')
-  assert.equal(result.states[0].status, 'correct')
-  assert.deepEqual(calls.opens, [course().url])
-})
-
-test('never opens native storage in Send collection or in old frozen review', async () => {
-  let opened = 0
-  let frozen = false
-  const win = { indexedDB: { open: () => { opened++; throw new Error('not allowed') } },
-    document: { getElementById: () => null, body: { classList: { contains: value => frozen && value === 'lia-course-frozen' } } } }
-  assert.equal((await readLearningState(course({ sendMode: true }), win)).phase, 'collect')
-  frozen = true
-  win.__liaFreezeV2LifecycleV1__ = {}
-  assert.equal((await readLearningState(course(), win)).phase, 'unavailable')
-  assert.equal(opened, 0)
+test('never touches IndexedDB while reading live, Send, or frozen learning state', async () => {
+  let accesses = 0
+  const win = {
+    get indexedDB() { accesses++; throw new Error('must not be accessed') },
+    __liaFreezeLearningStateV1__: { read: () => liveBridge([
+      { taskIndex: 0, nativeIndex: 0, table: 'quiz', outcome: 'correct', trial: 3 },
+    ]) },
+    document: { body: { classList: { contains: () => false } } },
+  }
+  const live = await readLearningState(course(), win)
+  assert.equal(live.states[0].status, 'correct')
+  assert.equal(live.states[0].failedAttempts, 2)
+  win.__liaFreezeLearningStateV1__.read = () => bridge({ phase: 'collect' })
+  assert.equal((await readLearningState(course(), win)).phase, 'collect')
+  win.__liaFreezeLearningStateV1__.read = () => bridge()
+  assert.equal((await readLearningState(course(), win)).phase, 'review')
+  assert.equal(accesses, 0)
 })

@@ -103,6 +103,7 @@ function generatedTaskSource(index) {
   }
 
   return header.concat([1, 2].flatMap(number => [
+    ...(number === 2 ? ['## Browserteil 2', ''] : []),
     '``` ascii',
     '+------------------------+------------------------+',
     '| " [[ ascii-' + index + '-' + number + '-a ]] " | " [[ ascii-' +
@@ -199,11 +200,28 @@ async function findLearningPathSlide(frame) {
   throw new Error('Generated closing @Lernpfad slide not found')
 }
 
+async function solveGeneratedSlide(frame, slide, answersByQuiz) {
+  await navigate(frame, slide)
+  await expect(frame.locator('.lia-quiz__check')).toHaveCount(answersByQuiz.length)
+  const inputs = frame.locator('input.lia-quiz__input')
+  const checks = frame.locator('.lia-quiz__check')
+  let inputIndex = 0
+  for (let quizIndex = 0; quizIndex < answersByQuiz.length; quizIndex++) {
+    const quizInputs = []
+    for (const answer of answersByQuiz[quizIndex]) {
+      const input = inputs.nth(inputIndex++)
+      await input.fill(answer)
+      quizInputs.push(input)
+    }
+    await checks.nth(quizIndex).click()
+    for (const input of quizInputs) await expect(input).toBeDisabled()
+  }
+  await expect(inputs).toHaveCount(inputIndex)
+}
+
 async function recommend(host) {
-  const button = host.getByRole('button', { name: /Empfehlungen.*Lernpfad/i })
-  await expect(button).toBeVisible()
-  await button.click()
   await expect(host.locator('section[data-offer]')).toHaveCount(3)
+  await expect.poll(() => host.evaluate(element => element.report)).not.toBe(null)
   return host.evaluate(element => element.report)
 }
 
@@ -425,7 +443,7 @@ async function run() {
     const intro = source.body.slice(0, source.body.indexOf('# BROWSER_TASK_'))
     assert.equal(count(intro, /^---$/gm), 8)
     assert.equal(count(source.body,
-      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.20$/gm), 1)
+      /^import:\s+https:\/\/raw\.githubusercontent\.com\/MINT-the-GAP\/lia-mathpath\/refs\/heads\/master\/README\.md\?v=0\.0\.21$/gm), 1)
     assert.deepEqual(
       source.body.match(/^comment:.*$/gm),
       ['comment: Übe das Thema „Grundrechenarten“ auf deinem bisherigen Niveau weiter und gewinne mehr Sicherheit.']
@@ -477,11 +495,11 @@ async function run() {
     assert.equal(apiReport.courseUrl, source.uri)
     assert.deepEqual(apiReport.statusCounts, generatedReport.statusCounts)
     assert.deepEqual(apiReport.warnings, [])
-    const databaseNames = await frame.evaluate(async () =>
-      (await indexedDB.databases()).map(entry => entry.name))
-    assert.ok(databaseNames.includes(source.uri))
-    check('Closing @Lernpfad reads data source and IndexedDB', {
-      slide: closingSlide, statusCounts: generatedReport.statusCounts, database: source.uri
+    await expect(frame.getByText(
+      /external script is requesting permission to use IndexedDB/i
+    )).toHaveCount(0)
+    check('Closing @Lernpfad reads the data source and current-session outcomes without an IndexedDB permission dialog', {
+      slide: closingSlide, statusCounts: generatedReport.statusCounts
     })
 
     await popup.reload({ waitUntil: 'domcontentloaded', timeout })
@@ -489,10 +507,37 @@ async function run() {
     const restoredSlide = await findLearningPathSlide(frame)
     const restoredReport = await recommend(frame.locator(hostSelector))
     assert.equal(restoredReport.courseUrl, source.uri)
-    assert.deepEqual(restoredReport.statusCounts, generatedReport.statusCounts)
+    assert.equal(restoredReport.statusCounts.correct, 0)
+    assert.equal(restoredReport.statusCounts.partial, 0)
+    assert.equal(restoredReport.statusCounts.unavailable, 0)
+    assert.ok([0, 1].includes(restoredReport.statusCounts.wrong))
+    assert.equal(restoredReport.statusCounts.unanswered,
+      13 - restoredReport.statusCounts.wrong)
     assert.deepEqual(restoredReport.warnings, [])
-    check('Generated result survives a full course reload', {
+    check('Reload reads only outcomes LiaScript remounts into the permission-free tracker', {
       slide: restoredSlide, statusCounts: restoredReport.statusCounts
+    })
+
+    await solveGeneratedSlide(frame, 2, [['browser-1']])
+    await solveGeneratedSlide(frame, 3, Array.from({ length: 8 }, (_, index) =>
+      [`browser-2-${index + 1}`]))
+    await solveGeneratedSlide(frame, 4, [['ascii-3-1-a', 'ascii-3-1-b']])
+    await solveGeneratedSlide(frame, 5, [['ascii-3-2-a', 'ascii-3-2-b']])
+    await solveGeneratedSlide(frame, 6, [['ascii-4-1-a', 'ascii-4-1-b']])
+    await solveGeneratedSlide(frame, 7, [['ascii-4-2-a', 'ascii-4-2-b']])
+    await navigate(frame, restoredSlide)
+    const completedReport = await recommend(frame.locator(hostSelector))
+    assert.deepEqual(completedReport.statusCounts, {
+      correct: 13, wrong: 0, partial: 0, unanswered: 0, unavailable: 0
+    })
+    assert.equal(completedReport.topics.find(item =>
+      item.topic === 'Grundrechenarten')?.failedAttemptCount, 1)
+    assert.equal(completedReport.weaknessTopics[0]?.failedAttemptCount, 1)
+    check('All generated tasks stay solved while the earlier failure remains ranked', {
+      statusCounts: completedReport.statusCounts,
+      weaknessTopics: completedReport.weaknessTopics.map(item => ({
+        topic: item.topic, failedAttemptCount: item.failedAttemptCount
+      }))
     })
 
     await navigate(page, 2)

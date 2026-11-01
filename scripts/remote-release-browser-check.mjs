@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { gunzipSync, gzipSync } from 'fflate'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const release = process.env.MATHPATH_RELEASE_VERSION || '0.0.20'
+const release = process.env.MATHPATH_RELEASE_VERSION || '0.0.21'
 const viewer = process.env.MATHPATH_VIEWER_URL ||
   'https://liascript.github.io/course/'
 const timeout = Number(process.env.MATHPATH_BROWSER_TIMEOUT || 90_000)
@@ -308,13 +308,8 @@ async function run() {
     await navigate(page, 5)
     const host = page.locator('lia-mathpath-lernpfad')
     await expect(host).toHaveCount(1)
-    const button = host.getByRole('button', {
-      name: 'Empfehlungen für deinen weiteren Lernpfad erstellen',
-      exact: true
-    })
-    await expect(button).toBeVisible()
-    await button.press('Enter')
     await expect(host.locator('section[data-offer]')).toHaveCount(3)
+    await expect.poll(() => host.evaluate(element => element.report)).not.toBe(null)
     const learningReport = await host.evaluate(element => element.report)
     assert.ok(learningReport, '@Lernpfad did not expose its structured report')
     assert.equal(learningReport.courseUrl, courseUri)
@@ -364,14 +359,8 @@ async function run() {
 
     const generatedSlide = await findLearningPathSlide(generatedPage)
     const generatedHost = generatedPage.locator('lia-mathpath-lernpfad')
-    const generatedButton = generatedHost.locator('button.create')
-    await expect(generatedButton).toBeVisible()
-    await generatedButton.click()
-    await generatedPage.waitForFunction(() => {
-      const host = document.querySelector('lia-mathpath-lernpfad')
-      const button = host?.shadowRoot?.querySelector('button.create')
-      return button && !button.disabled && button.getAttribute('aria-busy') !== 'true'
-    })
+    await expect(generatedHost.locator('section[data-offer]')).toHaveCount(3)
+    await expect.poll(() => generatedHost.evaluate(element => element.report)).not.toBe(null)
     const generatedState = await generatedHost.evaluate(element => ({
       report: element.report,
       summary: element.shadowRoot?.querySelector('.summary')?.textContent?.trim() || '',

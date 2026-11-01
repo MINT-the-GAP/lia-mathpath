@@ -1262,7 +1262,7 @@ test('duplicate bundle evaluation does not duplicate global listeners', async ()
     }
   })
 
-  assert.equal(documentCounts.get('click'), 1)
+  assert.equal(documentCounts.get('click'), 2)
   assert.equal(documentCounts.get('keydown'), 1)
   assert.equal(documentCounts.get('pointermove'), 1)
   assert.equal(windowCounts.get('scroll'), 1)

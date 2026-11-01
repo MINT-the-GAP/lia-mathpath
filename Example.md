@@ -8,7 +8,7 @@ mode: Presentation
 lernpfad-level: Einsteiger
 
 import: https://raw.githubusercontent.com/MINT-the-GAP/lia-freeze-v2/main/README.md
-import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.20
+import: https://raw.githubusercontent.com/MINT-the-GAP/lia-mathpath/refs/heads/master/README.md?v=0.0.21
 import: https://raw.githubusercontent.com/MINT-the-GAP/lia-resetter/main/README.md
 -->
 
@@ -135,7 +135,7 @@ $25\,\%$ von $80$ sind $20$.
 
 ## Dein weiterer Lernpfad
 
-Erstelle deine Empfehlungen. Jedes Angebot öffnet einen eigenständigen
+Deine Empfehlungen werden automatisch geladen. Jedes Angebot öffnet einen eigenständigen
 LiaScript-Kurs mit genau vier Aufgaben.
 
 @Lernpfad
