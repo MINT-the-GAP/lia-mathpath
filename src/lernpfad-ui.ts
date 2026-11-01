@@ -22,9 +22,9 @@ const CSS = `
   font-weight:400;
   line-height:1.45;
   color-scheme:light dark;
-  --_accent:rgb(var(--lia-mathpath-accent-rgb,20,115,117));
-  --_accent-contrast:rgb(var(--lia-mathpath-accent-contrast-rgb,255,255,255));
-  --_accent-soft:rgba(var(--lia-mathpath-accent-rgb,20,115,117),.1);
+  --_accent:rgb(var(--lia-mathpath-light-accent-rgb,67,143,145));
+  --_accent-contrast:rgb(var(--lia-mathpath-light-accent-contrast-rgb,0,0,0));
+  --_accent-soft:rgba(var(--lia-mathpath-light-accent-rgb,67,143,145),.18);
   --_surface:rgb(var(--lia-mathpath-surface-rgb,255,255,255));
   --_surface-soft:rgba(var(--lia-mathpath-surface-rgb,255,255,255),.72);
   --_text:rgb(var(--lia-mathpath-text-rgb,35,40,44));
@@ -81,7 +81,7 @@ button:focus-visible,select:focus-visible{
   width:.85em;
   height:.85em;
   flex:0 0 auto;
-  border:2px solid rgba(var(--lia-mathpath-accent-contrast-rgb,255,255,255),.45);
+  border:2px solid rgba(var(--lia-mathpath-light-accent-contrast-rgb,0,0,0),.35);
   border-top-color:var(--_accent-contrast);
   border-radius:50%;
   content:"";
@@ -147,7 +147,7 @@ section{
   border:1px solid var(--_border);
   border-top:3px solid var(--_accent);
   border-radius:.75em;
-  background:linear-gradient(180deg,var(--_accent-soft),transparent 4.25em),var(--_surface-soft);
+  background:linear-gradient(180deg,rgba(var(--lia-mathpath-light-accent-rgb,67,143,145),.26),var(--_accent-soft) 4.25em,transparent 8em),var(--_surface-soft);
   box-shadow:0 1px 3px rgba(var(--lia-mathpath-text-rgb,35,40,44),.08);
 }
 h3{
@@ -179,7 +179,7 @@ h3{
   align-items:center;
   gap:.35em;
   padding:.28em .42em .28em .62em;
-  border:1px solid rgba(var(--lia-mathpath-accent-rgb,20,115,117),.35);
+  border:1px solid rgba(var(--lia-mathpath-light-accent-rgb,67,143,145),.62);
   border-radius:.45em;
   background:var(--_accent-soft);
   color:var(--_text);
@@ -204,7 +204,7 @@ h3{
   font-size:1em;
   line-height:1;
 }
-.topic-chip button:hover:not(:disabled){background:rgba(var(--lia-mathpath-accent-rgb,20,115,117),.18)}
+.topic-chip button:hover:not(:disabled){background:rgba(var(--lia-mathpath-light-accent-rgb,67,143,145),.32)}
 select{
   display:block;
   width:100%;
@@ -212,7 +212,7 @@ select{
   max-width:100%;
   margin-top:.3em;
   padding:.55em .7em;
-  border:1px solid var(--_border);
+  border:1px solid rgba(var(--lia-mathpath-light-accent-rgb,67,143,145),.48);
   border-radius:.35em;
   background:var(--_surface);
   color:var(--_text);
@@ -250,8 +250,8 @@ select{
   margin-top:1em;
   padding:.58em .85em;
   border:1px solid var(--_accent);
-  background:var(--_surface);
-  color:var(--_text);
+  background:var(--_accent);
+  color:var(--_accent-contrast);
   box-shadow:0 1px 2px rgba(var(--lia-mathpath-text-rgb,35,40,44),.12);
 }
 .open-course:hover:not(:disabled){
@@ -301,8 +301,7 @@ select{
 @media(forced-colors:active){
   :host{color:CanvasText}
   .retry{border-color:Highlight;background:Highlight;color:HighlightText;box-shadow:none}
-  .open-course{border-color:LinkText;color:LinkText}
-  .open-course:hover:not(:disabled){background:Highlight;color:HighlightText}
+  .open-course,.open-course:hover:not(:disabled){border-color:Highlight;background:Highlight;color:HighlightText;box-shadow:none}
   section,.summary-item,.summary-message,.level,.count,.topic-chip,.warnings,.course-status,select{border-color:CanvasText;background:Canvas;color:CanvasText;box-shadow:none}
   button:disabled,select:disabled{border-color:GrayText;color:GrayText}
 }
@@ -740,7 +739,7 @@ export function registerLearningPathElement(
         reason.className = 'reason';
         const courseButton = doc.createElement('button');
         courseButton.type = 'button';
-        courseButton.className = 'open-course lia-btn lia-btn--outline';
+        courseButton.className = 'open-course lia-btn lia-btn--primary';
         courseButton.textContent = 'Kurs mit 4 Aufgaben öffnen';
         courseButton.setAttribute('aria-describedby', `${reasonId} ${statusId}`);
         const courseStatus = doc.createElement('p');

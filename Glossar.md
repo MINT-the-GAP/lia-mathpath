@@ -4,7 +4,7 @@ version:  0.0.3
 language: de
 edit:     true
 comment:  LiaScript plugin for reusable math path components.
-script:   ./dist/index.v0x0x22.js
+script:   ./dist/index.v0x0x23.js
 
 -->
 

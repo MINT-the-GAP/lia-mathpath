@@ -407,7 +407,7 @@ async function run() {
       allowedTopics: [...allowedTopics],
       selected: selectedCatalogTasks.map(task => ({ id: task.id, topics: task.topics }))
     })
-    assert.equal(openingUrl.search, '?v=1.0.8')
+    assert.equal(openingUrl.search, '?v=1.0.9')
     const openCalls = await page.evaluate(() => window.__MATHPATH_OPEN_CALLS__)
     assert.equal(openCalls.length, 1)
     assert.deepEqual(openCalls[0], {

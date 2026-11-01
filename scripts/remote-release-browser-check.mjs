@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { gunzipSync, gzipSync } from 'fflate'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const release = process.env.MATHPATH_RELEASE_VERSION || '0.0.22'
+const release = process.env.MATHPATH_RELEASE_VERSION || '0.0.23'
 const viewer = process.env.MATHPATH_VIEWER_URL ||
   'https://liascript.github.io/course/'
 const timeout = Number(process.env.MATHPATH_BROWSER_TIMEOUT || 90_000)

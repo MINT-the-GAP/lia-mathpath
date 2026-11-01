@@ -3,7 +3,10 @@
 const CSS_ID = 'lia-mathpath-style-v1';
 const ACCENT_VAR = '--lia-mathpath-accent-rgb';
 const ACCENT_CONTRAST_VAR = '--lia-mathpath-accent-contrast-rgb';
+const LIGHT_ACCENT_VAR = '--lia-mathpath-light-accent-rgb';
+const LIGHT_ACCENT_CONTRAST_VAR = '--lia-mathpath-light-accent-contrast-rgb';
 const DEFAULT_ACCENT = '20, 115, 117';
+const DEFAULT_LIGHT_ACCENT = '84, 196, 198';
 const SURFACE_VAR = '--lia-mathpath-surface-rgb';
 const TEXT_VAR = '--lia-mathpath-text-rgb';
 const DEFAULT_SURFACE = '255, 255, 255';
@@ -138,6 +141,21 @@ function accentContrast(accent: string): string {
     : DEFAULT_ACCENT_CONTRAST;
 }
 
+function lightAccent(accent: string): string {
+  const channels = parseRgbChannels(accent);
+  const dark = parseRgbChannels(DARK_ACCENT_CONTRAST);
+  if (!channels || !dark) return DEFAULT_LIGHT_ACCENT;
+
+  let whiteShare = 0.2;
+  let mixed: RgbChannels = channels;
+  do {
+    mixed = channels.map(channel => clampChannel(channel + (255 - channel) * whiteShare)) as RgbChannels;
+    whiteShare += 0.05;
+  } while (contrastRatio(mixed, dark) < 5 && whiteShare <= 0.8);
+
+  return mixed.join(', ');
+}
+
 function setRootProperty(property: string, value: string): void {
   const style = document.documentElement.style;
   if (style.getPropertyValue(property).trim() !== value) {
@@ -148,6 +166,7 @@ function setRootProperty(property: string, value: string): void {
 export function syncAccentColor(): void {
   const probe = themeProbe();
   const accent = readThemeToken(probe, '--color-highlight') || DEFAULT_ACCENT;
+  const lighterAccent = lightAccent(accent);
   const tokenSurface = readThemeToken(probe, '--color-background');
   const tokenText = readThemeToken(probe, '--color-text');
   const computedPair = tokenSurface && tokenText ? null : readComputedThemePair(probe);
@@ -160,6 +179,8 @@ export function syncAccentColor(): void {
 
   setRootProperty(ACCENT_VAR, accent);
   setRootProperty(ACCENT_CONTRAST_VAR, accentContrast(accent));
+  setRootProperty(LIGHT_ACCENT_VAR, lighterAccent);
+  setRootProperty(LIGHT_ACCENT_CONTRAST_VAR, accentContrast(lighterAccent));
   setRootProperty(SURFACE_VAR, surface);
   setRootProperty(TEXT_VAR, text);
 }

@@ -78,11 +78,10 @@ test('renders a compact token-based LiaScript interface with responsive and acce
     const style = root.querySelector('style').textContent
     assert.match(style, /:host\{[\s\S]*font-size:16px/)
     assert.match(style, /button,select\{[\s\S]*font-size:1em/)
-    assert.match(style, /--lia-mathpath-accent-rgb/)
+    assert.match(style, /--lia-mathpath-light-accent-rgb/)
     assert.match(style, /--lia-mathpath-surface-rgb/)
     assert.match(style, /--lia-mathpath-text-rgb/)
-    assert.match(style, /\.open-course\{[\s\S]*background:var\(--_surface\);[\s\S]*color:var\(--_text\)/)
-    assert.match(style, /\.open-course:hover:not\(:disabled\)\{[\s\S]*background:var\(--_accent\);[\s\S]*color:var\(--_accent-contrast\)/)
+    assert.match(style, /\.open-course\{[\s\S]*background:var\(--_accent\);[\s\S]*color:var\(--_accent-contrast\)/)
     assert.doesNotMatch(style, /--lia-background-color|border:1px solid currentColor/)
     assert.match(style, /@media\(max-width:42em\)/)
     assert.match(style, /@media\(prefers-reduced-motion:reduce\)/)
@@ -140,7 +139,7 @@ test('renders a compact token-based LiaScript interface with responsive and acce
       assert.equal(section.querySelector('label').htmlFor, select.id)
       assert.equal(section.querySelectorAll('.meta > .level, .meta > .count').length, 2)
       assert.ok(button.classList.contains('lia-btn'))
-      assert.ok(button.classList.contains('lia-btn--outline'))
+      assert.ok(button.classList.contains('lia-btn--primary'))
       assert.deepEqual(button.getAttribute('aria-describedby').split(' '), [reason.id, status.id])
       assert.equal(status.getAttribute('aria-atomic'), 'true')
     }

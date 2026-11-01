@@ -305,6 +305,8 @@ test('follows LiaScript light and dark theme tokens instead of arbitrary button 
 
     assert.equal(value('--lia-mathpath-accent-rgb'), '20, 115, 117')
     assert.equal(value('--lia-mathpath-accent-contrast-rgb'), '255, 255, 255')
+    assert.equal(value('--lia-mathpath-light-accent-rgb'), '67, 143, 145')
+    assert.equal(value('--lia-mathpath-light-accent-contrast-rgb'), '0, 0, 0')
     assert.equal(value('--lia-mathpath-surface-rgb'), '250, 250, 250')
     assert.equal(value('--lia-mathpath-text-rgb'), '24, 28, 34')
 
@@ -313,10 +315,14 @@ test('follows LiaScript light and dark theme tokens instead of arbitrary button 
 
     assert.equal(value('--lia-mathpath-accent-rgb'), '150, 230, 235')
     assert.equal(value('--lia-mathpath-accent-contrast-rgb'), '0, 0, 0')
+    assert.equal(value('--lia-mathpath-light-accent-rgb'), '171, 235, 239')
+    assert.equal(value('--lia-mathpath-light-accent-contrast-rgb'), '0, 0, 0')
     assert.equal(value('--lia-mathpath-surface-rgb'), '35, 39, 45')
     assert.equal(value('--lia-mathpath-text-rgb'), '245, 247, 250')
 
     const css = document.getElementById('lia-mathpath-style-v1')?.textContent || ''
+    assert.match(css, /lia-mathpath-glossary-highlight[^}]*--lia-mathpath-accent-rgb/)
+    assert.doesNotMatch(css, /lia-mathpath-glossary-highlight[^}]*--lia-mathpath-light-accent-rgb/)
     assert.match(css, /lia-mathpath-explain-dialog[\s\S]*background: rgb\(var\(--lia-mathpath-surface-rgb/)
     assert.match(css, /lia-mathpath-explain-close[\s\S]*--lia-mathpath-accent-contrast-rgb/)
     assert.match(css, /lia-mathpath-tooltip[\s\S]*background: rgba\(var\(--lia-mathpath-surface-rgb/)
